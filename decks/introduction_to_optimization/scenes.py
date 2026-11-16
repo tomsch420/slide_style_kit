@@ -60,6 +60,7 @@ from examples import (
     BumpyLandscape,
     GradientDescent,
     GripperSpeed,
+    IntegerProgramExample,
     InteriorPointMethod,
     LevelSet,
     LineFittingLoss,
@@ -876,6 +877,87 @@ class InteriorPointScene(VelocityPlotMixin, Scene):
         )
         readout.add_background_rectangle(color=ManimColor("#FFFFFF"), opacity=0.9)
         return readout
+
+
+class IntegerRoundingScene(PlotMixin, Scene):
+    """
+    An integer program: its LP optimum rounds to infeasible points, and the best integer
+    point lies far away.
+    """
+
+    def construct(self) -> None:
+        """
+        Unlike :meth:`manim.Scene.construct`, play the animation the class describes.
+        """
+        example = IntegerProgramExample()
+        axes = self.plot_axes(
+            x_range=[0, 5, 1], y_range=[0, 6, 1], x_label="x_1", y_label="x_2"
+        )
+        region = Polygon(
+            *[axes.c2p(*vertex) for vertex in example.feasible_vertices],
+            fill_color=PlotColor.FEASIBLE.manim_color,
+            fill_opacity=1,
+            stroke_color=PlotColor.STRUCTURE.manim_color,
+            stroke_width=3,
+        ).set_z_index(-1)
+        grid = VGroup(
+            *[
+                Dot(
+                    axes.c2p(first, second),
+                    radius=0.07 if feasible else 0.05,
+                    color=(PlotColor.STRUCTURE if feasible else PlotColor.MUTED).value,
+                )
+                for first in range(6)
+                for second in range(7)
+                for feasible in [
+                    example.is_feasible(point=np.array([first, second], dtype=float))
+                ]
+            ]
+        )
+        self.play(Create(axes), FadeIn(region), run_time=1.2)
+        self.play(FadeIn(grid), FadeIn(self.caption(text="Only whole numbers allowed")))
+        optimum = example.linear_optimum
+        point = Dot(axes.c2p(*optimum.point), color=PlotColor.PATH.value, radius=0.12)
+        label = self.note(
+            text=f"LP optimum ({optimum.point[0]:g}, {optimum.point[1]:g})",
+            font_size=26,
+        ).set_color(PlotColor.PATH.value)
+        label.next_to(point, LEFT, buff=0.25)
+        label.add_background_rectangle(color=ManimColor("#FFFFFF"), opacity=0.9)
+        self.play(FadeIn(point, scale=2), FadeIn(label))
+        crosses = VGroup(
+            *[
+                VGroup(
+                    Line(UL, DR, color=PlotColor.ALERT.value, stroke_width=6),
+                    Line(UR, DL, color=PlotColor.ALERT.value, stroke_width=6),
+                )
+                .scale(0.15)
+                .move_to(axes.c2p(*rounded))
+                for rounded in example.rounded_points
+            ]
+        )
+        rounded_label = (
+            self.note(text="rounded: infeasible", font_size=26)
+            .set_color(PlotColor.ALERT.value)
+            .next_to(crosses, DOWN, buff=0.25)
+        )
+        rounded_label.add_background_rectangle(color=ManimColor("#FFFFFF"), opacity=0.9)
+        self.play(FadeIn(crosses, scale=2), FadeIn(rounded_label))
+        best = example.integer_optimum
+        best_point = Dot(
+            axes.c2p(*best.point), color=PlotColor.OPTIMUM.value, radius=0.14
+        )
+        best_label = (
+            self.note(
+                text=f"best integer point ({best.point[0]:g}, {best.point[1]:g})",
+                font_size=26,
+            )
+            .set_color(PlotColor.OPTIMUM.value)
+            .next_to(best_point, RIGHT, buff=0.3)
+        )
+        best_label.add_background_rectangle(color=ManimColor("#FFFFFF"), opacity=0.9)
+        self.play(FadeIn(best_point, scale=2), FadeIn(best_label))
+        self.wait(2)
 
 
 # %% unconstrained optimization in 3D

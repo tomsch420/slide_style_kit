@@ -7,16 +7,24 @@ Run this module to write ``introduction_to_optimization.pptx`` and ``.pdf`` next
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import math
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
 
 import numpy as np
 
 from slide_style_kit.assets import Asset
-from slide_style_kit.components import CodeBlock, TakeAway
+from slide_style_kit.components import CodeBlock, DiagramNode, TakeAway
 from slide_style_kit.deck import Deck, PageDecoration
-from slide_style_kit.elements import Formula, Paragraph, Table, TextFrame, Video
+from slide_style_kit.elements import (
+    Arrow,
+    Formula,
+    Paragraph,
+    Table,
+    TextFrame,
+    Video,
+)
 from slide_style_kit.geometry import Position, Rectangle
 from slide_style_kit.pdf import PDFRenderer
 from slide_style_kit.power_point import PowerPointRenderer
@@ -29,7 +37,7 @@ from slide_style_kit.slides import (
     TableOfContentsSlide,
     TitleSlide,
 )
-from slide_style_kit.style import Alignment, BulletLevel
+from slide_style_kit.style import Alignment, BulletLevel, Color
 
 from animation_catalogue import Animation
 from examples import (
@@ -73,9 +81,9 @@ class Section(StrEnum):
     Linear and quadratic programs, the KKT conditions and Giskard's QP.
     """
 
-    LIKELIHOOD = "Likelihood"
+    OUTLOOK = "Outlook"
     """
-    Fitting models by maximizing their likelihood, and the summary.
+    Maximum likelihood, choosing a method, its pitfalls, and the summary.
     """
 
 
@@ -297,7 +305,9 @@ class IntroductionToOptimization:
                 subentries=["Linear Programs, Quadratic Programs, KKT"],
             ),
             TableOfContentsEntry(
-                text="Outlook: Maximum Likelihood", section=Section.LIKELIHOOD
+                text="Outlook",
+                section=Section.OUTLOOK,
+                subentries=["Maximum Likelihood, Choosing a Method"],
             ),
         ]
         return TableOfContentsSlide(
@@ -2683,6 +2693,263 @@ class IntroductionToOptimization:
             ),
         ]
 
+    # %% choosing a method
+
+    def method_choice_slides(self) -> list[Slide]:
+        """
+        :return: Which method suits which problem, discrete and black-box problems, and
+            what can go wrong.
+        """
+        return [
+            self.method_table_slide(),
+            self.discrete_decision_slide(),
+            self.black_box_slide(),
+            self.pitfall_slide(),
+        ]
+
+    def method_table_slide(self) -> Slide:
+        """
+        :return: A table from the kind of problem to the method and its caveat.
+        """
+        return ContentSlide(
+            title="Which Optimizer When?",
+            section=Section.OUTLOOK,
+            items=[
+                Table(
+                    position=Position(x=0.45, y=1.4),
+                    column_widths=[4.2, 3.9, 4.3],
+                    rows=[
+                        ["Your problem", "Use", "Watch out"],
+                        [
+                            "linear objective and constraints",
+                            "LP solver",
+                            "whole numbers make it much harder",
+                        ],
+                        [
+                            "quadratic objective, linear constraints",
+                            "QP solver (like Giskard)",
+                            "only easy if convex",
+                        ],
+                        [
+                            "smooth, up to thousands of variables",
+                            "Newton, L-BFGS",
+                            "needs curvature information",
+                        ],
+                        [
+                            "smooth, millions of parameters",
+                            "SGD, Adam",
+                            "local minima; tune the step size",
+                        ],
+                        [
+                            "whole-number decisions",
+                            "integer programming",
+                            "rounding the LP answer can fail",
+                        ],
+                        [
+                            "no gradient, expensive trials",
+                            "Bayesian optimization",
+                            "only a few parameters",
+                        ],
+                        [
+                            "non-convex with constraints",
+                            "nonlinear solvers (SQP)",
+                            "local optimum, depends on the start",
+                        ],
+                    ],
+                    row_height=0.55,
+                    font_size=15,
+                ),
+                TakeAway(
+                    text="Look at the problem's structure first: it picks the tool."
+                ),
+            ],
+        )
+
+    def discrete_decision_slide(self) -> Slide:
+        """
+        :return: Why whole-number decisions need their own solvers.
+        """
+        few, many = 4, 10
+        return BulletSlide(
+            title="Discrete Decisions",
+            section=Section.OUTLOOK,
+            text_area=Rectangle(left=0.45, top=1.4, width=5.6, height=4.8),
+            font_size=17,
+            paragraphs=[
+                Paragraph(
+                    text="Many decisions are choices, not amounts: which cup first, "
+                    "which robot takes which task.",
+                    space_after=12,
+                ),
+                *Paragraph.bullet_points(
+                    texts=[
+                        f"{few} items to clear: {math.factorial(few):,} orders. "
+                        f"{many} items: {math.factorial(many):,}.",
+                        "No gradient between choices.",
+                        "Rounding the LP answer can fail (right).",
+                        "Use {a:integer programming}, constraint programming or "
+                        "search \u2013 good solvers exist.",
+                    ],
+                    space_after=10,
+                ),
+            ],
+            items=[
+                self.video(
+                    animation=Animation.INTEGER_ROUNDING,
+                    position=Position(x=6.3, y=1.5),
+                    width=6.6,
+                )
+            ],
+            take_away="Whole-number decisions need their own solvers.",
+        )
+
+    def black_box_slide(self) -> Slide:
+        """
+        :return: Optimization by trial when no gradient exists.
+        """
+        steps = ["try parameters", "measure the result", "choose the next try"]
+        width, gap, top = 3.2, 0.9, 2.6
+        left = 0.45 + (12.4 - 3 * width - 2 * gap) / 2
+        first_center = left + width / 2
+        last_center = left + 2 * (width + gap) + width / 2
+        loop_bottom = top + 1.3
+        return ContentSlide(
+            title="No Gradient? Optimize by Trial",
+            section=Section.OUTLOOK,
+            items=[
+                self.line(
+                    text="Tune a grasp on the real robot: each trial is one real "
+                    "grasp \u2013 no formula, no gradient.",
+                    top=1.4,
+                ),
+                *[
+                    DiagramNode(
+                        area=Rectangle(
+                            left=left + index * (width + gap),
+                            top=top,
+                            width=width,
+                            height=0.8,
+                        ),
+                        text=step,
+                        fill=Color.PALE_GREEN,
+                        font_size=17,
+                    )
+                    for index, step in enumerate(steps)
+                ],
+                *[
+                    Arrow(
+                        start=Position(
+                            x=left + index * (width + gap) + width, y=top + 0.4
+                        ),
+                        end=Position(x=left + (index + 1) * (width + gap), y=top + 0.4),
+                        color=Color.DARK_GRAY,
+                    )
+                    for index in range(2)
+                ],
+                *[
+                    Arrow(start=start, end=end, color=Color.DARK_GRAY, has_head=head)
+                    for start, end, head in [
+                        (
+                            Position(x=last_center, y=top + 0.8),
+                            Position(x=last_center, y=loop_bottom),
+                            False,
+                        ),
+                        (
+                            Position(x=last_center, y=loop_bottom),
+                            Position(x=first_center, y=loop_bottom),
+                            False,
+                        ),
+                        (
+                            Position(x=first_center, y=loop_bottom),
+                            Position(x=first_center, y=top + 0.8),
+                            True,
+                        ),
+                    ]
+                ],
+                self.text_box(
+                    area=Rectangle(
+                        left=first_center, top=loop_bottom - 0.4, width=8.0, height=0.35
+                    ),
+                    paragraphs=[
+                        Paragraph(
+                            text="repeat", alignment=Alignment.CENTER, space_after=0
+                        )
+                    ],
+                    font_size=14,
+                ),
+                self.text_box(
+                    area=Rectangle(left=0.45, top=4.3, width=12.4, height=1.9),
+                    paragraphs=Paragraph.bullet_points(
+                        texts=[
+                            "{b:Random search:} a simple baseline.",
+                            "{b:Evolutionary methods:} keep the best tries, vary them.",
+                            "{b:Bayesian optimization:} learns which settings look "
+                            "promising and tries those next.",
+                        ],
+                        space_after=6,
+                    ),
+                ),
+                TakeAway(
+                    text="Without a gradient every trial counts: tune only a few "
+                    "parameters."
+                ),
+            ],
+        )
+
+    def pitfall_slide(self) -> Slide:
+        """
+        :return: Four ways optimization goes wrong, shown on the toy robot where
+            possible.
+        """
+        lazy_robot = replace(self.robot, goal_weight=0.0)
+        contradiction = replace(
+            self.robot,
+            constraint_bounds=np.array([10.0, 25.0, -1.0, 0.0, 0.0]),
+        )
+        status = "feasible" if contradiction.is_feasible else "infeasible"
+        return ContentSlide(
+            title="When Optimization Goes Wrong",
+            section=Section.OUTLOOK,
+            items=[
+                Table(
+                    position=Position(x=0.45, y=1.4),
+                    column_widths=[3.4, 5.0, 4.0],
+                    rows=[
+                        ["What goes wrong", "Example", "What to do"],
+                        [
+                            "the objective misses a wish",
+                            "goal weight 0: optimum x* = "
+                            f"{self.point_text(optimum=lazy_robot.quadratic_optimum)}"
+                            ", the robot stands still",
+                            "check that the solution makes sense",
+                        ],
+                        [
+                            "hard constraints contradict",
+                            "elbow must move backwards, joints only forwards: "
+                            f"\u201c{status}\u201d",
+                            "check the solver's status",
+                        ],
+                        [
+                            "the problem is not convex",
+                            "gradient descent stops in the nearest valley",
+                            "restart from several points",
+                        ],
+                        [
+                            "the model fits its data too well",
+                            "perfect on the training data, poor on new data",
+                            "test on unseen data",
+                        ],
+                    ],
+                    row_height=0.75,
+                    font_size=15,
+                ),
+                TakeAway(
+                    text="The optimizer answers the question you asked \u2013 check it "
+                    "was the right one."
+                ),
+            ],
+        )
+
     # %% likelihood
 
     def likelihood_slides(self) -> list[Slide]:
@@ -2691,10 +2958,10 @@ class IntroductionToOptimization:
         """
         estimate = self.grasps.maximum_likelihood_estimate
         return [
-            self.contents(highlighted_section=Section.LIKELIHOOD),
+            self.contents(highlighted_section=Section.OUTLOOK),
             ContentSlide(
                 title="Fitting a Model Is Maximizing a Likelihood",
-                section=Section.LIKELIHOOD,
+                section=Section.OUTLOOK,
                 items=[
                     self.line(
                         text="Model: y = θᵀx + noise, the noise Gaussian with "
@@ -2741,7 +3008,7 @@ class IntroductionToOptimization:
             ),
             ContentSlide(
                 title="Maximum Likelihood under a Constraint",
-                section=Section.LIKELIHOOD,
+                section=Section.OUTLOOK,
                 items=[
                     self.line(
                         text=f"The robot logged {self.grasps.attempt_count} grasps in "
@@ -2814,14 +3081,15 @@ class IntroductionToOptimization:
                     ),
                 ],
             ),
+            *self.method_choice_slides(),
             BulletSlide(
                 title="Key Takeaways",
-                section=Section.LIKELIHOOD,
+                section=Section.OUTLOOK,
                 text_area=Rectangle(left=0.45, top=1.3, width=12.4, height=4.9),
                 font_size=17,
                 paragraphs=[
                     *[
-                        Paragraph(text=f"{index}. {point}", indent=0.3, space_after=8)
+                        Paragraph(text=f"{index}. {point}", indent=0.3, space_after=6)
                         for index, point in enumerate(
                             [
                                 "An optimization problem: objective, decision "
@@ -2837,6 +3105,8 @@ class IntroductionToOptimization:
                                 "multipliers price the constraints.",
                                 "Giskard moves the robot by solving a convex QP every "
                                 "control cycle.",
+                                "The structure of the problem picks the method \u2013 "
+                                "and every method has its pitfalls.",
                             ],
                             start=1,
                         )
@@ -2847,7 +3117,7 @@ class IntroductionToOptimization:
             ),
             BulletSlide(
                 title="Further Reading",
-                section=Section.LIKELIHOOD,
+                section=Section.OUTLOOK,
                 text_area=Rectangle(left=0.45, top=1.3, width=12.4, height=5.4),
                 font_size=14,
                 paragraphs=Paragraph.bullet_points(

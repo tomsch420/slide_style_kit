@@ -496,7 +496,47 @@ class BumpyLandscape(OneVariableFunction):
 
 
 @dataclass(kw_only=True)
-class VelocityControlProblem:
+class LinearlyConstrainedProblem:
+    """
+    A problem in two variables whose feasible region is the polygon
+    :math:`\\{x : Gx \\le g\\}`.
+    """
+
+    constraint_matrix: np.ndarray
+    """
+    The left-hand sides :math:`G` of the constraints, one row per constraint.
+    """
+
+    constraint_bounds: np.ndarray
+    """
+    The right-hand sides :math:`g` of the constraints.
+    """
+
+    @cached_property
+    def feasible_vertices(self) -> np.ndarray:
+        """
+        The corners of the feasible polygon, counterclockwise, one per row.
+        """
+        vertices = []
+        row_count = len(self.constraint_bounds)
+        for first in range(row_count):
+            for second in range(first + 1, row_count):
+                rows = self.constraint_matrix[[first, second]]
+                if abs(np.linalg.det(rows)) < 1e-12:
+                    continue
+                corner = np.linalg.solve(rows, self.constraint_bounds[[first, second]])
+                if np.all(
+                    self.constraint_matrix @ corner <= self.constraint_bounds + 1e-9
+                ):
+                    vertices.append(corner)
+        vertices = np.unique(np.round(vertices, 9), axis=0)
+        center = vertices.mean(axis=0)
+        angles = np.arctan2(*(vertices - center).T[::-1])
+        return vertices[np.argsort(angles)]
+
+
+@dataclass(kw_only=True)
+class VelocityControlProblem(LinearlyConstrainedProblem):
     """
     A two-joint version of the quadratic program a constraint-based controller such as
     Giskard solves every control cycle: choose the velocities :math:`x` of a mobile base
@@ -607,6 +647,19 @@ class VelocityControlProblem:
         return Optimum(point=tuple(result.x), value=-float(result.fun))
 
     @cached_property
+    def is_feasible(self) -> bool:
+        """
+        Whether some velocities satisfy all hard constraints at once.
+        """
+        result = linprog(
+            np.zeros(2),
+            A_ub=self.constraint_matrix,
+            b_ub=self.constraint_bounds,
+            bounds=[(None, None)] * 2,
+        )
+        return bool(result.status == 0)
+
+    @cached_property
     def unconstrained_minimum(self) -> Optimum:
         """
         The velocities that minimize the cost when no constraint applies.
@@ -658,28 +711,6 @@ class VelocityControlProblem:
             rcond=None,
         )[0]
         return multipliers
-
-    @cached_property
-    def feasible_vertices(self) -> np.ndarray:
-        """
-        The corners of the feasible polygon, counterclockwise, one per row.
-        """
-        vertices = []
-        row_count = len(self.constraint_bounds)
-        for first in range(row_count):
-            for second in range(first + 1, row_count):
-                rows = self.constraint_matrix[[first, second]]
-                if abs(np.linalg.det(rows)) < 1e-12:
-                    continue
-                corner = np.linalg.solve(rows, self.constraint_bounds[[first, second]])
-                if np.all(
-                    self.constraint_matrix @ corner <= self.constraint_bounds + 1e-9
-                ):
-                    vertices.append(corner)
-        vertices = np.unique(np.round(vertices, 9), axis=0)
-        center = vertices.mean(axis=0)
-        angles = np.arctan2(*(vertices - center).T[::-1])
-        return vertices[np.argsort(angles)]
 
 
 @dataclass(kw_only=True)
@@ -791,6 +822,92 @@ class QualityBand:
                 )
             )
         return bands
+
+
+@dataclass(kw_only=True)
+class IntegerProgramExample(LinearlyConstrainedProblem):
+    """
+    A small integer program, :math:`\\max x_1 + x_2` subject to :math:`Gx \\le g`
+    with integer :math:`x`, whose LP optimum rounds to infeasible points.
+    """
+
+    constraint_matrix: np.ndarray = field(
+        default_factory=lambda: np.array(
+            [[2.0, -2.0], [-8.0, 10.0], [-1.0, 0.0], [0.0, -1.0]]
+        )
+    )
+    """
+    The left-hand sides :math:`G` of two constraints and of :math:`x \\ge 0`.
+    """
+
+    constraint_bounds: np.ndarray = field(
+        default_factory=lambda: np.array([-1.0, 13.0, 0.0, 0.0])
+    )
+    """
+    The right-hand sides :math:`g` of the constraints.
+    """
+
+    search_limit: int = 10
+    """
+    The largest value of each variable the integer search tries.
+    """
+
+    def is_feasible(self, *, point: np.ndarray) -> bool:
+        """
+        :return: Whether *point* satisfies all constraints.
+        """
+        return bool(
+            np.all(self.constraint_matrix @ point <= self.constraint_bounds + 1e-9)
+        )
+
+    @cached_property
+    def linear_optimum(self) -> Optimum:
+        """
+        The optimum when the variables may take any real value.
+        """
+        result = linprog(
+            -np.ones(2),
+            A_ub=self.constraint_matrix,
+            b_ub=self.constraint_bounds,
+            bounds=[(None, None)] * 2,
+        )
+        return Optimum(point=tuple(result.x), value=-float(result.fun))
+
+    @cached_property
+    def integer_points(self) -> list[np.ndarray]:
+        """
+        Every feasible point with integer coordinates, by trying all of them.
+        """
+        candidates = range(self.search_limit + 1)
+        return [
+            np.array([first, second], dtype=float)
+            for first in candidates
+            for second in candidates
+            if self.is_feasible(point=np.array([first, second], dtype=float))
+        ]
+
+    @cached_property
+    def integer_optimum(self) -> Optimum:
+        """
+        The best feasible point with integer coordinates.
+        """
+        best = max(self.integer_points, key=lambda point: point.sum())
+        return Optimum(point=tuple(best), value=float(best.sum()))
+
+    @property
+    def rounded_points(self) -> list[np.ndarray]:
+        """
+        The integer points the LP optimum rounds to, down and up in each coordinate.
+        """
+        optimum = np.array(self.linear_optimum.point)
+        return [
+            np.array(point)
+            for point in {
+                (first, second)
+                for first in (np.floor(optimum[0]), np.ceil(optimum[0]))
+                for second in (np.floor(optimum[1]), np.ceil(optimum[1]))
+            }
+        ]
 
 
 # %% linear program solvers

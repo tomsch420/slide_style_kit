@@ -121,6 +121,11 @@ class Animation(StrEnum):
     Gradient descent, momentum and Adam in a narrow valley.
     """
 
+    INTEGER_ROUNDING = "integer_rounding"
+    """
+    An integer program whose LP optimum rounds to infeasible points.
+    """
+
     QUADRATIC_PROGRAM_SOLUTION = "quadratic_program_solution"
     """
     The cost contours of the velocity QP growing until they touch the feasible region.

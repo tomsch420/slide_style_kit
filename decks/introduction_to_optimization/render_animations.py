@@ -27,6 +27,7 @@ from scenes import (
     GradientBowlScene,
     GradientDescentProblemsScene,
     GradientDescentSurfaceScene,
+    IntegerRoundingScene,
     InteriorPointScene,
     LinearProgramSolutionScene,
     OptimizerComparisonScene,
@@ -83,6 +84,8 @@ class AnimationRenderer:
                 return GradientDescentProblemsScene
             case Animation.OPTIMIZER_COMPARISON:
                 return OptimizerComparisonScene
+            case Animation.INTEGER_ROUNDING:
+                return IntegerRoundingScene
             case Animation.QUADRATIC_PROGRAM_SOLUTION:
                 return QuadraticProgramSolutionScene
             case Animation.CONVEX_SET:
