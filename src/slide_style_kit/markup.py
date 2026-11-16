@@ -90,6 +90,31 @@ class MarkupStyle(StrEnum):
     Bold in the to-do orange.
     """
 
+    CODE_KEYWORD = "k"
+    """
+    Monospaced in the keyword colour.
+    """
+
+    CODE_STRING = "l"
+    """
+    Monospaced in the string colour.
+    """
+
+    CODE_COMMENT = "c"
+    """
+    Monospaced italics in the comment colour.
+    """
+
+    CODE_NUMBER = "n"
+    """
+    Monospaced in the number colour.
+    """
+
+    CODE_NAME = "f"
+    """
+    Monospaced in the colour of built-in and function names.
+    """
+
     def apply(self, *, run: TextRun) -> TextRun:
         """
         :param run: The run as the surrounding text styles it.
@@ -110,6 +135,27 @@ class MarkupStyle(StrEnum):
                 return replace(run, typeface=Typeface.SYMBOL)
             case MarkupStyle.TODO:
                 return replace(run, color=Color.TODO, bold=True)
+            case MarkupStyle.CODE_KEYWORD:
+                return replace(
+                    run, color=Color.CODE_KEYWORD, typeface=Typeface.MONOSPACE
+                )
+            case MarkupStyle.CODE_STRING:
+                return replace(
+                    run, color=Color.CODE_STRING, typeface=Typeface.MONOSPACE
+                )
+            case MarkupStyle.CODE_COMMENT:
+                return replace(
+                    run,
+                    color=Color.CODE_COMMENT,
+                    italic=True,
+                    typeface=Typeface.MONOSPACE,
+                )
+            case MarkupStyle.CODE_NUMBER:
+                return replace(
+                    run, color=Color.CODE_NUMBER, typeface=Typeface.MONOSPACE
+                )
+            case MarkupStyle.CODE_NAME:
+                return replace(run, color=Color.CODE_NAME, typeface=Typeface.MONOSPACE)
 
 
 # %% parsing

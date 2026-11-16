@@ -31,6 +31,7 @@ from scenes import (
     LinearProgramSolutionScene,
     OptimizerComparisonScene,
     QuadraticProgramSolutionScene,
+    RobotSetupScene,
     SimplexScene,
     StochasticGradientDescentScene,
 )
@@ -60,6 +61,8 @@ class AnimationRenderer:
         The manim scene that draws the animation.
         """
         match self.animation:
+            case Animation.ROBOT_SETUP:
+                return RobotSetupScene
             case Animation.FEASIBLE_REGION:
                 return FeasibleRegionScene
             case Animation.LINEAR_PROGRAM_SOLUTION:

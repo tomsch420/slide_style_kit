@@ -66,6 +66,11 @@ class Animation(StrEnum):
     The animations of the lecture, by the stem of their files.
     """
 
+    ROBOT_SETUP = "robot_setup"
+    """
+    The toy robot from the side and how fast its base, elbow and gripper move.
+    """
+
     FEASIBLE_REGION = "feasible_region"
     """
     The constrained minimum of a parabola.

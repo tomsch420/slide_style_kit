@@ -89,6 +89,31 @@ class Color(StrEnum):
     The outline of a code block.
     """
 
+    CODE_KEYWORD = "0033B3"
+    """
+    Keywords and keyword constants in code.
+    """
+
+    CODE_STRING = "067D17"
+    """
+    String literals in code.
+    """
+
+    CODE_COMMENT = "8C8C8C"
+    """
+    Comments in code.
+    """
+
+    CODE_NUMBER = "1750EB"
+    """
+    Number literals in code.
+    """
+
+    CODE_NAME = "00627A"
+    """
+    Built-in and function names in code.
+    """
+
     PALE_GREEN = "DDF0D8"
     """
     A fill for boxes and diagram nodes.

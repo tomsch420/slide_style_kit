@@ -12,6 +12,7 @@ dependencies = [
     "krrood",
     "lxml",
     "Pillow",
+    "pygments",
     "python-pptx",
     "reportlab",
     "svglib",

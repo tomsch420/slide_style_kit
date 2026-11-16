@@ -10,6 +10,8 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 from krrood.ormatic.utils import classproperty
+from pygments.lexers import get_lexer_by_name, get_lexer_for_filename
+from pygments.token import Comment, Keyword, Name, Number, Operator, String, _TokenType
 
 from slide_style_kit.elements import (
     Arrow,
@@ -20,6 +22,7 @@ from slide_style_kit.elements import (
     TextFrame,
 )
 from slide_style_kit.geometry import Length, Position, Rectangle, Size
+from slide_style_kit.markup import MarkupStyle
 from slide_style_kit.style import Alignment, Color, VerticalAnchor
 
 # %% diagrams
@@ -148,7 +151,7 @@ class TakeAway(CompositeElement):
 @dataclass(kw_only=True)
 class CodeBlock(CompositeElement):
     """
-    Source code in a grey box, keeping the indentation of its lines.
+    Source code in a grey box, highlighted, keeping the indentation of its lines.
 
     .. warning:: The code is set as markup, so it cannot contain a closing brace.
     """
@@ -161,6 +164,11 @@ class CodeBlock(CompositeElement):
     source_code: str
     """
     The code; leading and trailing blank lines are dropped.
+    """
+
+    language: str = "python"
+    """
+    The Pygments name of the code's language, such as ``python`` or ``prolog``.
     """
 
     font_size: float = 12
@@ -200,17 +208,60 @@ class CodeBlock(CompositeElement):
         :param font_size: The font size, in points.
         :return: A code block showing the file's content.
         """
-        return cls(area=area, source_code=path.read_text(), font_size=font_size)
+        return cls(
+            area=area,
+            source_code=path.read_text(),
+            language=get_lexer_for_filename(path.name).aliases[0],
+            font_size=font_size,
+        )
+
+    def token_style(self, *, token_type: _TokenType) -> MarkupStyle:
+        """
+        :return: The markup style a token of *token_type* is highlighted with.
+        """
+        if token_type in Keyword or token_type in Operator.Word:
+            return MarkupStyle.CODE_KEYWORD
+        if token_type in String:
+            return MarkupStyle.CODE_STRING
+        if token_type in Comment:
+            return MarkupStyle.CODE_COMMENT
+        if token_type in Number:
+            return MarkupStyle.CODE_NUMBER
+        if token_type in Name.Builtin or token_type in Name.Function:
+            return MarkupStyle.CODE_NAME
+        return MarkupStyle.MONOSPACE
+
+    def highlighted_lines(self) -> list[list[tuple[MarkupStyle, str]]]:
+        """
+        :return: Every line of the code as its highlighted pieces, in order.
+        """
+        lexer = get_lexer_by_name(self.language)
+        lines: list[list[tuple[MarkupStyle, str]]] = [[]]
+        for token_type, text in lexer.get_tokens(self.source_code.strip("\n")):
+            style = self.token_style(token_type=token_type)
+            for index, piece in enumerate(text.split("\n")):
+                if index > 0:
+                    lines.append([])
+                if not piece:
+                    continue
+                if lines[-1] and lines[-1][-1][0] == style:
+                    piece = lines[-1].pop()[1] + piece
+                lines[-1].append((style, piece))
+        if not lines[-1]:
+            lines.pop()
+        return lines
 
     def code_paragraphs(self) -> list[Paragraph]:
         """
-        :return: One monospaced paragraph per non-blank line, indented like the line.
+        :return: One highlighted monospaced paragraph per non-blank line, indented
+            like the line.
         """
         character_width_per_point = (
             CodeBlock.character_width_in_ems / Length.points_per_inch
         )
         paragraphs = []
-        for line in self.source_code.strip("\n").split("\n"):
+        for pieces in self.highlighted_lines():
+            line = "".join(piece for _, piece in pieces)
             body = line.lstrip(" ")
             if not body:
                 paragraphs[-1] = replace(
@@ -221,8 +272,15 @@ class CodeBlock(CompositeElement):
             indentation = (
                 (len(line) - len(body)) * character_width_per_point * self.font_size
             )
+            leading = len(line) - len(body)
+            spans = []
+            for style, piece in pieces:
+                kept = piece[leading:]
+                leading = max(leading - len(piece), 0)
+                if kept:
+                    spans.append(f"{{{style.value}:{kept}}}")
             paragraphs.append(
-                Paragraph(text=f"{{m:{body}}}", space_after=1, indent=indentation)
+                Paragraph(text="".join(spans), space_after=1, indent=indentation)
             )
         return paragraphs
 

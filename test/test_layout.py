@@ -11,7 +11,7 @@ from slide_style_kit.components import CodeBlock, Matrix, TodoNote
 from slide_style_kit.elements import Box, Picture, Table
 from slide_style_kit.exceptions import UnsizedPicture
 from slide_style_kit.geometry import Length, Position, Rectangle
-from slide_style_kit.style import Alignment, BulletLevel, Rotation
+from slide_style_kit.style import Color, Alignment, BulletLevel, Rotation
 
 # %% geometry
 
@@ -159,3 +159,19 @@ def test_matrix_brackets_enclose_all_entries():
     assert right_stroke.start.x - left_stroke.start.x == pytest.approx(
         2 * matrix.column_width + 2 * matrix.bracket_gap
     )
+
+
+def test_code_block_highlights_keywords_numbers_and_comments():
+    """
+    Each kind of token is set in its own colour, comments also in italics.
+    """
+    code = CodeBlock(
+        area=Rectangle(left=0, top=0, width=5, height=2),
+        source_code="import torch  # load\nx = 2.0\n",
+    )
+    first, second = code.code_paragraphs()
+    keyword, _, comment = first.markup.runs()
+    number = second.markup.runs()[-1]
+    assert (keyword.text, keyword.color) == ("import", Color.CODE_KEYWORD)
+    assert (comment.color, comment.italic) == (Color.CODE_COMMENT, True)
+    assert (number.text, number.color) == ("2.0", Color.CODE_NUMBER)

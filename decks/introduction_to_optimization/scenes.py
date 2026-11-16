@@ -49,6 +49,7 @@ from manim import (
     VMobject,
     Write,
     always_redraw,
+    interpolate_color,
     config,
     linear,
 )
@@ -58,6 +59,7 @@ from examples import (
     BarrierObjective,
     BumpyLandscape,
     GradientDescent,
+    GripperSpeed,
     InteriorPointMethod,
     LevelSet,
     LineFittingLoss,
@@ -67,6 +69,7 @@ from examples import (
     OneVariableFunction,
     Paraboloid,
     PeaksLandscape,
+    QualityBand,
     SaddleLandscape,
     ShiftedParabola,
     SimplexMethod,
@@ -123,6 +126,11 @@ class PlotColor(StrEnum):
     CONTOUR = "#7FA7C9"
     """
     Level sets.
+    """
+
+    BEST_QUALITY = "#86C383"
+    """
+    The fill of the best band of a feasible region shaded by quality.
     """
 
     MUTED = "#8A8A8A"
@@ -301,24 +309,55 @@ class VelocityPlotMixin(PlotMixin):
             lines.append((line, tag))
         return lines
 
-    def feasible_polygon(
-        self, *, axes: Axes, problem: VelocityControlProblem
-    ) -> Polygon:
+    def quality_bands(
+        self,
+        *,
+        axes: Axes,
+        problem: VelocityControlProblem,
+        quality: TwoVariableFunction,
+        higher_is_better: bool,
+    ) -> VGroup:
         """
-        :return: The feasible region of *problem*, filled.
+        :param quality: The function that rates the points of the feasible region.
+        :param higher_is_better: Whether larger values of *quality* are better.
+        :return: The feasible region filled in bands of *quality*, darker where better.
         """
-        return Polygon(
-            *[axes.c2p(*vertex) for vertex in problem.feasible_vertices],
-            fill_color=PlotColor.FEASIBLE.manim_color,
-            fill_opacity=0.8,
-            stroke_width=0,
+        bands = QualityBand.from_grid(
+            function=quality,
+            problem=problem,
+            horizontal_range=(axes.x_range[0], axes.x_range[1]),
+            vertical_range=(axes.y_range[0], axes.y_range[1]),
+        )
+        if not higher_is_better:
+            bands = bands[::-1]
+        return VGroup(
+            *[
+                Polygon(
+                    *[axes.c2p(*point) for point in polygon],
+                    fill_color=interpolate_color(
+                        PlotColor.FEASIBLE.manim_color,
+                        PlotColor.BEST_QUALITY.manim_color,
+                        rank / (len(bands) - 1),
+                    ),
+                    fill_opacity=1,
+                    stroke_width=0,
+                )
+                for rank, band in enumerate(bands)
+                for polygon in band.polygons
+            ]
         )
 
     def draw_feasible_region(
-        self, *, axes: Axes, problem: VelocityControlProblem
+        self,
+        *,
+        axes: Axes,
+        problem: VelocityControlProblem,
+        quality: TwoVariableFunction,
+        higher_is_better: bool,
     ) -> None:
         """
-        Draw the axes, then each constraint with its label, then the feasible region.
+        Draw the axes, then each constraint with its label, then the feasible region
+        shaded by *quality*.
         """
         self.play(Create(axes), run_time=1.2)
         positions = [(11.0, 8.0), (5.0, 26.6), (7.2, 10.5)]
@@ -328,7 +367,12 @@ class VelocityPlotMixin(PlotMixin):
             tag.move_to(axes.c2p(*position)).set_z_index(3)
             tag.add_background_rectangle(color=ManimColor("#FFFFFF"), opacity=0.85)
             self.play(Create(line), FadeIn(tag), run_time=0.8)
-        region = self.feasible_polygon(axes=axes, problem=problem).set_z_index(-1)
+        region = self.quality_bands(
+            axes=axes,
+            problem=problem,
+            quality=quality,
+            higher_is_better=higher_is_better,
+        ).set_z_index(-1)
         self.play(FadeIn(region), run_time=0.8)
 
     def speed_text(self, *, value: float) -> str:
@@ -404,6 +448,176 @@ class FeasibleRegionScene(PlotMixin, Scene):
         self.wait(1.5)
 
 
+class RobotSetupScene(PlotMixin, Scene):
+    """
+    The toy robot from the side: the base drives, the arm extends, and the elbow halfway
+    along the arm moves at the base speed plus half the arm speed, towards a shelf it
+    must not hit.
+    """
+
+    def construct(self) -> None:
+        """
+        Unlike :meth:`manim.Scene.construct`, play the animation the class describes.
+        """
+        problem = VelocityControlProblem()
+        elbow_share = problem.constraint_matrix[2, 1]
+        drive, extension = ValueTracker(0), ValueTracker(0)
+        shoulder_height, arm_length = 0.3, 4.0
+
+        def shoulder() -> np.ndarray:
+            """
+            :return: The position of the shoulder, carried by the base.
+            """
+            return np.array([-4.6 + drive.get_value(), shoulder_height, 0])
+
+        def elbow() -> np.ndarray:
+            """
+            :return: The position of the elbow, halfway along the extending arm.
+            """
+            reach = elbow_share * (arm_length + extension.get_value())
+            return shoulder() + reach * RIGHT
+
+        def gripper() -> np.ndarray:
+            """
+            :return: The position of the gripper at the end of the extending arm.
+            """
+            return shoulder() + (arm_length + extension.get_value()) * RIGHT
+
+        environment = VGroup(
+            Line(
+                6.2 * LEFT + 3 * DOWN, 6.2 * RIGHT + 3 * DOWN, color=PlotColor.INK.value
+            ),
+            Rectangle(
+                width=3.2,
+                height=0.3,
+                fill_color=PlotColor.MUTED.manim_color,
+                fill_opacity=1,
+                stroke_width=0,
+            ).move_to(0.4 * RIGHT + 0.72 * UP),
+            Rectangle(
+                width=3.0,
+                height=0.15,
+                fill_color=PlotColor.MUTED.manim_color,
+                fill_opacity=1,
+                stroke_width=0,
+            ).move_to(4.0 * RIGHT + 0.475 * DOWN),
+            Line(
+                2.7 * RIGHT + 0.55 * DOWN,
+                2.7 * RIGHT + 3 * DOWN,
+                color=PlotColor.MUTED.value,
+            ),
+            Line(
+                5.3 * RIGHT + 0.55 * DOWN,
+                5.3 * RIGHT + 3 * DOWN,
+                color=PlotColor.MUTED.value,
+            ),
+            Rectangle(
+                width=0.5,
+                height=0.9,
+                fill_color=PlotColor.ALERT.manim_color,
+                fill_opacity=0.8,
+                stroke_width=0,
+            ).move_to(4.0 * RIGHT + 0.05 * DOWN),
+        )
+        labels = VGroup(
+            self.note(text="shelf", font_size=24).move_to(1.4 * RIGHT + 1.15 * UP),
+            self.note(text="cup", font_size=24).move_to(4.0 * RIGHT + 0.85 * UP),
+        )
+        robot = always_redraw(
+            lambda: VGroup(
+                Rectangle(
+                    width=2.0,
+                    height=0.7,
+                    fill_color=PlotColor.STRUCTURE.manim_color,
+                    fill_opacity=1,
+                    stroke_width=0,
+                ).move_to([shoulder()[0], -2.43, 0]),
+                *[
+                    Circle(
+                        radius=0.22, color=PlotColor.INK.value, fill_opacity=1
+                    ).move_to([shoulder()[0] + offset, -2.78, 0])
+                    for offset in (-0.6, 0.6)
+                ],
+                Line(
+                    [shoulder()[0], -2.1, 0],
+                    shoulder(),
+                    color=PlotColor.STRUCTURE.value,
+                    stroke_width=14,
+                ),
+                Line(
+                    shoulder(),
+                    gripper(),
+                    color=PlotColor.STRUCTURE.value,
+                    stroke_width=10,
+                ),
+                Circle(
+                    radius=0.3,
+                    color=PlotColor.STRUCTURE.value,
+                    fill_opacity=1,
+                ).move_to(elbow()),
+                Line(
+                    gripper(),
+                    gripper() + 0.25 * RIGHT + 0.12 * UP,
+                    color=PlotColor.INK.value,
+                    stroke_width=5,
+                ),
+                Line(
+                    gripper(),
+                    gripper() + 0.25 * RIGHT + 0.12 * DOWN,
+                    color=PlotColor.INK.value,
+                    stroke_width=5,
+                ),
+            )
+        )
+        self.play(FadeIn(environment), FadeIn(labels), FadeIn(robot), run_time=1.2)
+        base_limit, arm_limit, elbow_limit = problem.constraint_bounds[:3]
+        speeds = [
+            (
+                rf"\text{{base: }} x_1 \le {base_limit:g}",
+                lambda: [shoulder()[0], -3.45, 0],
+            ),
+            (
+                rf"\text{{arm: }} x_2 \le {arm_limit:g}",
+                lambda: shoulder() + 1.55 * RIGHT + 0.45 * DOWN,
+            ),
+            (
+                rf"\text{{elbow: }} x_1 + {elbow_share:g}\, x_2 \le {elbow_limit:g}",
+                lambda: elbow() + 1.3 * UP,
+            ),
+            (
+                rf"\text{{gripper: }} x_1 + x_2 \approx "
+                rf"{problem.desired_gripper_speed:g}",
+                lambda: gripper() + 0.85 * DOWN + 0.9 * RIGHT,
+            ),
+        ]
+        readouts = VGroup(
+            *[
+                MathTex(formula, font_size=30, color=PlotColor.PATH.value)
+                .move_to(place())
+                .add_background_rectangle(color=ManimColor("#FFFFFF"), opacity=0.85)
+                for formula, place in speeds
+            ]
+        )
+        caption = self.caption(text="The base drives: every point moves with it")
+        self.play(FadeIn(caption))
+        self.play(drive.animate.set_value(0.6), run_time=1.5)
+        self.play(
+            Transform(
+                caption,
+                self.caption(text="The arm extends: the elbow moves half as far"),
+            )
+        )
+        self.play(extension.animate.set_value(0.8), run_time=1.5)
+        self.play(
+            Transform(
+                caption, self.caption(text="How fast each point may move, in cm/s")
+            ),
+            LaggedStart(*[FadeIn(readout) for readout in readouts], lag_ratio=0.4),
+            run_time=2,
+        )
+        self.wait(2.5)
+
+
 # %% linear programs
 
 
@@ -419,7 +633,12 @@ class LinearProgramSolutionScene(VelocityPlotMixin, Scene):
         """
         problem = VelocityControlProblem()
         axes = self.velocity_axes()
-        self.draw_feasible_region(axes=axes, problem=problem)
+        self.draw_feasible_region(
+            axes=axes,
+            problem=problem,
+            quality=GripperSpeed(problem=problem),
+            higher_is_better=True,
+        )
         optimum = problem.linear_optimum
         speed = ValueTracker(0)
         objective = always_redraw(
@@ -447,8 +666,15 @@ class LinearProgramSolutionScene(VelocityPlotMixin, Scene):
         readout.to_corner(UR, buff=0.4).shift(0.6 * DOWN)
         readout.add_background_rectangle(color=ManimColor("#FFFFFF"), opacity=0.9)
         readout[2].add_updater(lambda number: number.set_value(speed.get_value()))
+        line_label = always_redraw(
+            lambda: (
+                MathTex(r"x_1 + x_2 = v", font_size=30, color=PlotColor.PATH.value)
+                .next_to(axes.c2p(0.3, max(speed.get_value() - 0.3, 0)), UR, buff=0.08)
+                .add_background_rectangle(color=ManimColor("#FFFFFF"), opacity=0.85)
+            )
+        )
         self.add(objective)
-        self.play(FadeIn(readout))
+        self.play(FadeIn(readout), FadeIn(line_label))
         for level in range(5, int(optimum.value), 5):
             self.play(speed.animate.set_value(level), run_time=0.45, rate_func=linear)
             self.add(
@@ -475,7 +701,7 @@ class LinearProgramSolutionScene(VelocityPlotMixin, Scene):
             color=PlotColor.OPTIMUM.value,
         ).next_to(point, DOWN + RIGHT, buff=0.3)
         label.add_background_rectangle(color=ManimColor("#FFFFFF"), opacity=0.9)
-        self.play(FadeIn(point, scale=2), Write(label))
+        self.play(FadeIn(point, scale=2), Write(label), FadeOut(line_label))
         self.wait(2)
 
 
@@ -491,7 +717,12 @@ class SimplexScene(VelocityPlotMixin, Scene):
         """
         problem = VelocityControlProblem()
         axes = self.velocity_axes()
-        self.draw_feasible_region(axes=axes, problem=problem)
+        self.draw_feasible_region(
+            axes=axes,
+            problem=problem,
+            quality=GripperSpeed(problem=problem),
+            higher_is_better=True,
+        )
         vertices = SimplexMethod(problem=problem).vertices
         captions = ["Initialization"] + [
             f"Pivot {index}" for index in range(1, len(vertices) - 1)
@@ -563,7 +794,12 @@ class InteriorPointScene(VelocityPlotMixin, Scene):
         problem = VelocityControlProblem()
         method = InteriorPointMethod(problem=problem)
         axes = self.velocity_axes()
-        self.draw_feasible_region(axes=axes, problem=problem)
+        self.draw_feasible_region(
+            axes=axes,
+            problem=problem,
+            quality=GripperSpeed(problem=problem),
+            higher_is_better=True,
+        )
         path = method.central_path
         shown_steps = [0, 6, 11, 15, 19, 23, len(path) - 1]
         sharpnesses = [0.0, *method.sharpnesses]
@@ -1162,7 +1398,12 @@ class QuadraticProgramSolutionScene(VelocityPlotMixin, Scene):
         """
         problem = VelocityControlProblem()
         axes = self.velocity_axes()
-        self.draw_feasible_region(axes=axes, problem=problem)
+        self.draw_feasible_region(
+            axes=axes,
+            problem=problem,
+            quality=MotionCost(problem=problem),
+            higher_is_better=False,
+        )
         unconstrained = problem.unconstrained_minimum
         optimum = problem.quadratic_optimum
         linear_optimum = problem.linear_optimum
@@ -1476,7 +1717,8 @@ class StochasticGradientDescentScene(PlotMixin, Scene):
 class ComputationalGraphScene(PlotMixin, Scene):
     """
     The forward pass computes the values of :math:`f(a, b) = (a + b) b` node by node;
-    the backward pass sends the adjoints back, summing them where :math:`b` branches.
+    the backward pass sends the derivatives of :math:`f` back, summing them where
+    :math:`b` branches.
     """
 
     def construct(self) -> None:
@@ -1488,10 +1730,10 @@ class ComputationalGraphScene(PlotMixin, Scene):
         positions = {
             "a": 4.5 * LEFT + 1.6 * UP,
             "b": 4.5 * LEFT + 1.6 * DOWN,
-            "c": 0.6 * LEFT + 1.0 * UP,
+            "sum": 0.6 * LEFT + 1.0 * UP,
             "f": 3.6 * RIGHT + 0.2 * DOWN,
         }
-        symbols = {"a": "a", "b": "b", "c": "+", "f": r"\times"}
+        symbols = {"a": "a", "b": "b", "sum": "+", "f": r"\times"}
         circles = {
             label: VGroup(
                 Circle(radius=0.55, color=PlotColor.INK.value, stroke_width=3),
@@ -1518,7 +1760,12 @@ class ComputationalGraphScene(PlotMixin, Scene):
             *[GrowArrow(edge) for edge in edges],
             run_time=1.5,
         )
-        names = {"a": "a", "b": "b", "c": "c = a + b", "f": "f = c \\cdot b"}
+        names = {
+            "a": "a",
+            "b": "b",
+            "sum": r"\mathrm{sum} = a + b",
+            "f": r"f = \mathrm{sum} \cdot b",
+        }
         for label, node in nodes.items():
             value = MathTex(
                 rf"{names[label]} = {node.value:g}",
@@ -1527,21 +1774,23 @@ class ComputationalGraphScene(PlotMixin, Scene):
             ).next_to(circles[label], UP, buff=0.2)
             self.play(FadeIn(value, shift=0.2 * UP), run_time=0.7)
         self.wait(0.6)
-        self.play(Transform(title, self.caption(text="Backward pass: adjoints")))
+        self.play(
+            Transform(title, self.caption(text="Backward pass: derivatives of f"))
+        )
         contributions: dict[str, list[float]] = {label: [] for label in nodes}
         contributions["f"].append(1.0)
         for node in reversed(list(nodes.values())):
-            self.show_adjoint(
+            self.show_output_derivative(
                 label=node.label,
                 terms=contributions[node.label],
                 circle=circles[node.label],
             )
-            adjoint = sum(contributions[node.label])
+            output_derivative = sum(contributions[node.label])
             for operand, derivative in zip(node.operands, node.local_derivatives):
-                contributions[operand.label].append(adjoint * derivative)
+                contributions[operand.label].append(output_derivative * derivative)
         self.wait(2)
 
-    def show_adjoint(
+    def show_output_derivative(
         self,
         *,
         label: str,
@@ -1549,16 +1798,22 @@ class ComputationalGraphScene(PlotMixin, Scene):
         circle: VGroup,
     ) -> None:
         """
-        Write the adjoint of the node *label* below its *circle* as the sum of the
-        *terms* its consumers sent back.
+        Write the derivative of the output with respect to the node *label* below its
+        *circle*, as the sum of the *terms* its consumers sent back.
         """
         total = f"{sum(terms):g}"
         expression = total
         if len(terms) > 1:
             expression = " + ".join(f"{term:g}" for term in terms) + f" = {total}"
         text = MathTex(
-            rf"\bar {label} = {expression}",
+            rf"\partial f / \partial {self.math_name(label=label)} = {expression}",
             font_size=34,
             color=PlotColor.ALERT.value,
         ).next_to(circle, DOWN, buff=0.2)
         self.play(FadeIn(text, shift=0.2 * DOWN), run_time=0.8)
+
+    def math_name(self, *, label: str) -> str:
+        """
+        :return: The node *label* as LaTeX: single letters as variables, words upright.
+        """
+        return label if len(label) == 1 else rf"\mathrm{{{label}}}"

@@ -310,12 +310,17 @@ class IntroductionToOptimization:
 
     def robot_constraints_latex(self) -> str:
         """
-        :return: :math:`Gx \\le g` of the robot with both matrices written out.
+        :return: :math:`Gx \\le g` of the robot with both matrices written out and each
+            row named.
         """
+        names = r" \\ ".join(
+            rf"\leftarrow \text{{{name}}}" for name in self.robot.constraint_names
+        )
         return (
             rf"Gx \le g, \quad G = "
             rf"{self.latex_matrix(values=self.robot.constraint_matrix)}, \quad g = "
-            rf"{self.latex_matrix(values=self.robot.constraint_bounds)}"
+            rf"{self.latex_matrix(values=self.robot.constraint_bounds)} "
+            rf"\begin{{matrix}} {names} \end{{matrix}}"
         )
 
     # %% introduction
@@ -572,6 +577,21 @@ class IntroductionToOptimization:
                     TakeAway(
                         text="Two decision variables: every problem today can be drawn "
                         "in the plane."
+                    ),
+                ],
+            ),
+            ContentSlide(
+                title="The Toy Robot from the Side",
+                section=Section.INTRODUCTION,
+                items=[
+                    self.video(
+                        animation=Animation.ROBOT_SETUP,
+                        position=Position(x=2.65, y=1.25),
+                        height=5.0,
+                    ),
+                    TakeAway(
+                        text="Each constraint limits how fast one point of the robot "
+                        "moves."
                     ),
                 ],
             ),
@@ -1631,8 +1651,8 @@ class IntroductionToOptimization:
                         area=Rectangle(left=0.45, top=5.2, width=5.3, height=1.0),
                         paragraphs=[
                             Paragraph(
-                                text="with c = a + b. The input b reaches f along "
-                                "{a:two paths}.",
+                                text="with sum = a + b. The input b reaches f "
+                                "along {a:two paths}.",
                                 space_after=0,
                             )
                         ],
@@ -1678,7 +1698,7 @@ class IntroductionToOptimization:
                             *Paragraph.bullet_points(
                                 texts=[
                                     "Forward pass stores the values, backward pass "
-                                    "sends the adjoints back",
+                                    "sends the derivatives of the output back",
                                     "One backward pass per output",
                                 ],
                                 space_after=6,
@@ -1740,8 +1760,9 @@ class IntroductionToOptimization:
                                 "Giskard writes the robot's kinematics as an expression "
                                 "graph and differentiates it into the {a:Jacobians} its "
                                 "QP needs.",
-                                "PyTorch prints the {a:same numbers} as our backward "
-                                "pass by hand: 3 and 8.",
+                                "Automatic differentiation is exact, so every "
+                                "framework computes the same numbers \u2013 here 3 and "
+                                "8, as in our backward pass by hand.",
                             ],
                             space_after=6,
                         ),
@@ -1844,9 +1865,11 @@ class IntroductionToOptimization:
         :return: The forward and backward pass through :attr:`graph`, as a table.
         """
         nodes = self.graph.nodes
-        first, second, total, output = (nodes[label] for label in "abcf")
+        first, second, total, output = (
+            nodes[label] for label in ("a", "b", "sum", "f")
+        )
         value = {label: self.number(value=node.value) for label, node in nodes.items()}
-        adjoint = {
+        derivative = {
             label: self.number(value=node.adjoint) for label, node in nodes.items()
         }
         return ContentSlide(
@@ -1854,46 +1877,54 @@ class IntroductionToOptimization:
             section=Section.COMPUTATIONAL_GRAPHS,
             items=[
                 self.line(
-                    text="The {a:adjoint} v̄ of a node is ∂f/∂v. Start "
-                    "with f̄ = 1 and sum what the consumers u of v send back:",
+                    text="How much does the output f change per change of each node? "
+                    "Start at f itself (∂f/∂f = 1) and go backwards:",
                     top=1.3,
                 ),
                 self.display(
-                    latex=r"\bar v = \sum_{u \text{ uses } v} \bar u \, "
-                    r"\frac{\partial u}{\partial v}",
+                    latex=r"\frac{\partial f}{\partial\, \text{node}} = "
+                    r"\sum_{\text{consumers of the node}} \frac{\partial f}{\partial\, "
+                    r"\text{consumer}} \cdot \frac{\partial\, \text{consumer}}"
+                    r"{\partial\, \text{node}}",
                     top=1.8,
-                    height=0.85,
+                    height=0.95,
                 ),
                 Table(
-                    position=Position(x=0.9, y=2.85),
-                    column_widths=[2.4, 2.0, 3.4, 3.9],
+                    position=Position(x=0.9, y=2.9),
+                    column_widths=[2.4, 1.9, 3.4, 4.0],
                     rows=[
-                        ["Node", "Forward value", "Local derivatives", "Adjoint"],
                         [
-                            "f = c · b",
-                            value["f"],
-                            "∂f/∂c = b,  ∂f/∂b = c",
-                            f"f̄ = {adjoint['f']}",
+                            "Node",
+                            "Forward value",
+                            "Local derivatives",
+                            "∂f/∂node",
                         ],
                         [
-                            "c = a + b",
-                            value["c"],
-                            "∂c/∂a = ∂c/∂b = 1",
-                            f"c̄ = f̄ · b = {adjoint['c']}",
+                            "f = sum · b",
+                            value["f"],
+                            "∂f/∂sum = b,  ∂f/∂b = sum",
+                            f"∂f/∂f = {derivative['f']}",
+                        ],
+                        [
+                            "sum = a + b",
+                            value["sum"],
+                            "∂sum/∂a = ∂sum/∂b = 1",
+                            f"∂f/∂sum = {derivative['f']} · b = {derivative['sum']}",
                         ],
                         [
                             "b",
                             value["b"],
                             "",
-                            "b̄ = f̄ · c + c̄ · 1 = "
+                            f"∂f/∂b = {derivative['f']} · sum + "
+                            f"{derivative['sum']} · 1 = "
                             f"{self.number(value=output.adjoint * total.value)} + "
-                            f"{adjoint['c']} = {adjoint['b']}",
+                            f"{derivative['sum']} = {derivative['b']}",
                         ],
                         [
                             "a",
                             value["a"],
                             "",
-                            f"ā = c̄ · 1 = {adjoint['a']}",
+                            f"∂f/∂a = {derivative['sum']} · 1 = {derivative['a']}",
                         ],
                     ],
                     row_height=0.48,
@@ -1903,10 +1934,13 @@ class IntroductionToOptimization:
                     text="Check: f = ab + b², so ∂f/∂a = b = "
                     f"{value['b']} and ∂f/∂b = a + 2b = "
                     f"{self.number(value=first.value + 2 * second.value)}.",
-                    top=5.45,
+                    top=5.5,
                     font_size=16,
                 ),
-                TakeAway(text="Where a value branches, its adjoints add up."),
+                TakeAway(
+                    text="Where a value is used twice, the derivatives sent back add "
+                    "up."
+                ),
             ],
         )
 
@@ -1979,6 +2013,7 @@ class IntroductionToOptimization:
                     ),
                 ],
             ),
+            self.constraint_origin_slide(),
             ContentSlide(
                 title="Example: The Fastest Gripper",
                 section=Section.CONSTRAINED,
@@ -2039,13 +2074,15 @@ class IntroductionToOptimization:
                         ],
                         space_after=14,
                     ),
+                    self.heading(text="Reading the video:"),
                     *Paragraph.bullet_points(
                         texts=[
-                            "The arm moves at its limit.",
-                            "The {a:elbow} constraint is active.",
-                            "The goal of "
-                            f"{self.number(value=robot.desired_gripper_speed)} cm/s "
-                            "is out of reach.",
+                            "{a:Orange line:} all (x\u2081, x\u2082) with the same "
+                            "gripper speed v = x\u2081 + x\u2082; it meets the "
+                            "x\u2082-axis at v.",
+                            "As v grows the line slides outward; the last feasible "
+                            "point it touches is the optimum.",
+                            "Darker green: faster gripper.",
                         ],
                         space_after=6,
                     ),
@@ -2061,6 +2098,74 @@ class IntroductionToOptimization:
                 "corner it touches.",
             ),
         ]
+
+    def constraint_origin_slide(self) -> Slide:
+        """
+        :return: How each row of :math:`G` follows from how fast a point of the robot
+            moves.
+        """
+        robot = self.robot
+        rows = [
+            rf"\text{{{name}}} & {self.latex_number(value=row[0])} & "
+            rf"{self.latex_number(value=row[1])} & {self.latex_number(value=bound)}"
+            for name, row, bound in zip(
+                robot.constraint_names, robot.constraint_matrix, robot.constraint_bounds
+            )
+            if bound > 0
+        ]
+        elbow_share = robot.constraint_matrix[2, 1]
+        return ContentSlide(
+            title="Where the Numbers Come From",
+            section=Section.CONSTRAINED,
+            items=[
+                self.video(
+                    animation=Animation.ROBOT_SETUP,
+                    position=Position(x=0.45, y=1.4),
+                    width=6.3,
+                ),
+                self.text_box(
+                    area=Rectangle(left=7.0, top=1.35, width=5.9, height=1.1),
+                    paragraphs=[
+                        Paragraph(
+                            text="Each constraint limits the speed of one point. Its "
+                            "row of G: how fast that point moves per cm/s of base "
+                            "(x\u2081) and per cm/s of arm (x\u2082).",
+                            space_after=0,
+                        )
+                    ],
+                    font_size=16,
+                ),
+                self.display(
+                    latex=r"\begin{array}{lccc} \text{point} & \text{per } x_1 & "
+                    r"\text{per } x_2 & \text{limit} \\ \hline "
+                    + r" \\ ".join(rows)
+                    + r" \end{array}",
+                    top=2.55,
+                    height=1.5,
+                    left=7.0,
+                    width=5.9,
+                    font_size=18,
+                ),
+                self.text_box(
+                    area=Rectangle(left=7.0, top=4.2, width=5.9, height=2.0),
+                    paragraphs=Paragraph.bullet_points(
+                        texts=[
+                            f"{self.number(value=elbow_share)}: the elbow sits halfway "
+                            "along the arm, so it moves half as far as the gripper when "
+                            "the arm extends.",
+                            "The gripper moves at 1 \u00b7 x\u2081 + 1 \u00b7 x\u2082: "
+                            "that row is J.",
+                        ],
+                        space_after=6,
+                    ),
+                    font_size=16,
+                ),
+                TakeAway(
+                    text="Each row of G is a row of the robot's Jacobian: the speed of "
+                    "one point."
+                ),
+            ],
+        )
 
     def linear_program_solver_slides(self) -> list[Slide]:
         """
@@ -2370,7 +2475,7 @@ class IntroductionToOptimization:
                     ),
                     Paragraph(
                         text="The optimum lies on the elbow's edge, {a:not at a "
-                        "corner}."
+                        "corner}. Darker green: lower cost.",
                     ),
                 ],
                 items=[

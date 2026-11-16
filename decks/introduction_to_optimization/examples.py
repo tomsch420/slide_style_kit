@@ -541,6 +541,13 @@ class VelocityControlProblem:
     The right-hand sides :math:`g` of the constraints, in cm/s.
     """
 
+    constraint_names: list[str] = field(
+        default_factory=lambda: ["base", "arm", "elbow", "base forward", "arm forward"]
+    )
+    """
+    The part of the robot each constraint limits, one per row of :math:`G`.
+    """
+
     @property
     def quadratic_cost_matrix(self) -> np.ndarray:
         """
@@ -691,6 +698,99 @@ class MotionCost(TwoVariableFunction):
 
     def gradient(self, *, point: np.ndarray) -> np.ndarray:
         return self.problem.cost_gradient(point=point)
+
+
+@dataclass(kw_only=True)
+class GripperSpeed(TwoVariableFunction):
+    """
+    The gripper speed :math:`J x` of the velocity control problem, the objective of its
+    LP.
+    """
+
+    problem: VelocityControlProblem
+    """
+    The problem whose gripper speed is evaluated.
+    """
+
+    def evaluate(self, *, points: np.ndarray) -> np.ndarray:
+        return self.problem.gripper_speed(points=points)
+
+    def gradient(self, *, point: np.ndarray) -> np.ndarray:
+        return self.problem.gripper_jacobian
+
+
+@dataclass(kw_only=True)
+class QualityBand:
+    """
+    The part of the feasible region where a function lies between two values.
+    """
+
+    lower: float
+    """
+    The smallest function value in the band.
+    """
+
+    upper: float
+    """
+    The largest function value in the band.
+    """
+
+    polygons: list[np.ndarray]
+    """
+    The outlines of the band, each an array of points with one row per point.
+    """
+
+    @classmethod
+    def from_grid(
+        cls,
+        *,
+        function: TwoVariableFunction,
+        problem: VelocityControlProblem,
+        horizontal_range: tuple[float, float],
+        vertical_range: tuple[float, float],
+        band_count: int = 8,
+        resolution: int = 300,
+    ) -> list[Self]:
+        """
+        :param function: The function whose values the bands divide.
+        :param problem: The problem whose feasible region the bands fill.
+        :param horizontal_range: The interval of the first variable.
+        :param vertical_range: The interval of the second variable.
+        :param band_count: The number of bands, each covering an equal share of the
+            feasible region.
+        :param resolution: The number of grid points along each axis.
+        :return: The bands, ordered by increasing function value.
+        """
+        horizontal = np.linspace(*horizontal_range, resolution)
+        vertical = np.linspace(*vertical_range, resolution)
+        grid_x, grid_y = np.meshgrid(horizontal, vertical)
+        points = np.stack([grid_x, grid_y], axis=-1)
+        values = function.evaluate(points=points)
+        feasible = np.all(
+            points @ problem.constraint_matrix.T <= problem.constraint_bounds + 1e-9,
+            axis=-1,
+        )
+        levels = np.quantile(values[feasible], np.linspace(0, 1, band_count + 1))
+        generator = contourpy.contour_generator(
+            grid_x,
+            grid_y,
+            np.ma.masked_array(values, mask=~feasible),
+            fill_type=contourpy.FillType.OuterOffset,
+        )
+        bands = []
+        for lower, upper in zip(levels, levels[1:]):
+            outlines, offsets = generator.filled(lower, upper)
+            bands.append(
+                cls(
+                    lower=float(lower),
+                    upper=float(upper),
+                    polygons=[
+                        outline[offset[0] : offset[1]]
+                        for outline, offset in zip(outlines, offsets)
+                    ],
+                )
+            )
+        return bands
 
 
 # %% linear program solvers
@@ -1004,7 +1104,7 @@ class GraphNode(ABC):
 
     label: str
     """
-    The name of the node's value, such as ``a`` or ``c``.
+    The name of the node's value, such as ``a`` or ``sum``.
     """
 
     adjoint: float = 0.0
@@ -1165,11 +1265,12 @@ class SumTimesFactorGraph:
     @cached_property
     def output(self) -> ProductNode:
         """
-        The output node :math:`f = c \\cdot b` with :math:`c = a + b`, backpropagated.
+        The output node :math:`f = \\mathrm{sum} \\cdot b` with :math:`\\mathrm{sum} = a + b`,
+        backpropagated.
         """
         first = InputNode(label="a", input_value=self.first_input)
         second = InputNode(label="b", input_value=self.second_input)
-        total = SumNode(label="c", left=first, right=second)
+        total = SumNode(label="sum", left=first, right=second)
         output = ProductNode(label="f", left=total, right=second)
         output.backpropagate()
         return output
