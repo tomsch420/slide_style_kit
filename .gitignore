@@ -1,0 +1,14 @@
+__pycache__/
+*.egg-info/
+.venv/
+.pytest_cache/
+example.pptx
+example.pdf
+.idea/workspace.xml
+.idea/shelf/
+
+# third-party crops of the original deck, no longer used
+decks/*/figures/
+# built decks; run the deck module to regenerate
+decks/*/*.pptx
+decks/*/*.pdf

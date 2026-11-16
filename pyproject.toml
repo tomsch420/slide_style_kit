@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "slide_style_kit"
+version = "0.1.0"
+description = "Describe a lecture deck in the Uni Bremen look once, and render it to PowerPoint and PDF."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "krrood",
+    "lxml",
+    "Pillow",
+    "python-pptx",
+    "reportlab",
+    "typing-extensions>=4.12.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "krrood[development-tools]",
+    "pre-commit",
+    "pytest>=7.0.0",
+]
+
+[project.scripts]
+slide-style-kit-example = "slide_style_kit.example:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["slide_style_kit*"]
+
+[tool.setuptools.package-data]
+slide_style_kit = ["assets/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["test"]
+pythonpath = ["src", "test"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = ["-v", "--strict-markers", "--tb=short"]

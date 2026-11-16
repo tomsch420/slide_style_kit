@@ -1,0 +1,88 @@
+# slide_style_kit
+
+Describe a lecture deck in the Uni Bremen beamer look (16:9) once in Python, and render it
+to both **.pptx** and **.pdf**. Built for the *Advanced Methods of AI* lecture slides,
+following the krrood conventions (see `AGENTS.md`).
+
+## Setup
+
+```bash
+python -m venv .venv && . .venv/bin/activate
+pip install -e ".[dev]"
+pre-commit install
+```
+
+Fonts for the PDF: Liberation Sans/Mono and DejaVu Sans
+(`apt install fonts-liberation fonts-dejavu-core`). For other locations, set
+`SLIDEKIT_LIBERATION_DIR` (folder with `LiberationSans-Regular.ttf` etc.) and
+`SLIDEKIT_DEJAVU` (path of `DejaVuSans.ttf`). The .pptx uses Arial / Courier New /
+Cambria Math.
+
+## Quick start
+
+`python -m slide_style_kit.example` writes `example.pptx` and `example.pdf` into the
+current directory. Copy `src/slide_style_kit/example.py` to start a new deck:
+
+```python
+from pathlib import Path
+
+from slide_style_kit.deck import Deck
+from slide_style_kit.elements import Paragraph
+from slide_style_kit.pdf import PDFRenderer
+from slide_style_kit.power_point import PowerPointRenderer
+from slide_style_kit.slides import BulletSlide
+
+deck = Deck(
+    title="My lecture",
+    author="Me",
+    sections=["Introduction"],
+    slides=[
+        BulletSlide(
+            title="Hello",
+            section="Introduction",
+            paragraphs=Paragraph.bullet_points(texts=["one", "{b:two}"]),
+            take_away="that is all",
+        )
+    ],
+)
+PowerPointRenderer(deck=deck, path=Path("deck.pptx")).render()
+PDFRenderer(deck=deck, path=Path("deck.pdf")).render()
+```
+
+## Modules
+
+| Module | Content |
+|---|---|
+| `elements` | `Paragraph`, `TextFrame`, `Picture`, `Box`, `Arrow`, `Table` |
+| `components` | `DiagramNode`, `Label`, `Caption`, `TakeAway`, `CodeBlock`, `TodoNote` |
+| `slides` | `TitleSlide`, `TableOfContentsSlide`, `SectionDividerSlide`, `BulletSlide`, `ComparisonSlide`, `ContentSlide`, `PlainSlide` |
+| `deck` | `Deck` and `PageDecoration` (title bar, footer navigation, logo) |
+| `style` | `Color` palette, `Typeface`, `BulletLevel`, `Alignment`, `VerticalAnchor`, `Rotation` |
+| `markup` | the inline markup below |
+| `geometry` | `Position`, `Size`, `Rectangle`, `Length` |
+| `power_point`, `pdf` | the renderers |
+| `assets` | logos, robot sketch, example code |
+
+## Text markup
+
+Inside any string (not nestable):
+`{b:bold}` `{i:italic}` `{a:alert red}` `{s:structure blue bold}` `{m:monospace}`
+`{y:math symbol font}` `{t:todo marker}`
+
+## Layout
+
+* A page is 13.333 x 7.5 in; all coordinates are inches from the top left.
+* Title bar at the top, footer (page number, section navigation, logo) below y = 6.97.
+  Content goes between y ≈ 1.2 and 6.8.
+* `Deck.sections` lists the footer sections; each slide's `section` highlights one.
+* Bullets: `BulletLevel.FIRST` blue ▶, `SECOND` –, `THIRD` •.
+* `TitleSlide` and `PlainSlide` have no title bar and footer.
+* Any slide's `todo` shows as a sticky note on it and leads its speaker notes.
+
+## Development
+
+```bash
+pytest
+krrood check --all-lines $(find src test -name '*.py' -not -path '*/assets/*')
+krrood agents-md   # regenerate AGENTS.md after a krrood update
+```
