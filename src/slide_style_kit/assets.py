@@ -40,3 +40,8 @@ class Asset(PathEnumeration):
     """
     The code the example deck shows in a code block.
     """
+
+    FORMULA_TEMPLATE = DIRECTORY / "formula_template.tex"
+    """
+    The LaTeX document formulas are typeset in.
+    """

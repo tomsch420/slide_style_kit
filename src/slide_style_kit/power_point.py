@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     from slide_style_kit.elements import (
         Arrow,
         Box,
+        Formula,
         Paragraph,
         Picture,
         Table,
@@ -251,6 +252,16 @@ class PowerPointRenderer(Renderer):
             Inches(picture.position.y),
             Inches(size.width),
             Inches(size.height),
+        )
+
+    def draw_formula(self, *, formula: Formula) -> None:
+        area = formula.displayed_area()
+        self.current_slide.shapes.add_picture(
+            str(formula.typeset_formula.raster_image),
+            Inches(area.left),
+            Inches(area.top),
+            Inches(area.width),
+            Inches(area.height),
         )
 
     def draw_video(self, *, video: Video) -> None:

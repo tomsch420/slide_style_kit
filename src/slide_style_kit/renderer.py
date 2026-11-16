@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from slide_style_kit.elements import (
         Arrow,
         Box,
+        Formula,
         Picture,
         Table,
         TextFrame,
@@ -88,6 +89,12 @@ class Renderer(ABC):
     def draw_video(self, *, video: Video) -> None:
         """
         Draw *video* on the current page, as a video where the format can play one.
+        """
+
+    @abstractmethod
+    def draw_formula(self, *, formula: Formula) -> None:
+        """
+        Draw *formula* in its :meth:`Formula.displayed_area`.
         """
 
     @abstractmethod

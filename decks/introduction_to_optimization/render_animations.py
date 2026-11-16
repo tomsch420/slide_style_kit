@@ -20,6 +20,7 @@ from animation_catalogue import Animation
 from scenes import (
     ComputationalGraphScene,
     ConvexityScene,
+    ConvexSetScene,
     ConvergenceScene,
     CriticalPointsScene,
     FeasibleRegionScene,
@@ -81,6 +82,8 @@ class AnimationRenderer:
                 return OptimizerComparisonScene
             case Animation.QUADRATIC_PROGRAM_SOLUTION:
                 return QuadraticProgramSolutionScene
+            case Animation.CONVEX_SET:
+                return ConvexSetScene
             case Animation.CONVEXITY:
                 return ConvexityScene
             case Animation.STOCHASTIC_GRADIENT_DESCENT:

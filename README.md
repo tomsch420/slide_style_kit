@@ -18,6 +18,12 @@ Fonts for the PDF: Liberation Sans/Mono and DejaVu Sans
 `SLIDEKIT_DEJAVU` (path of `DejaVuSans.ttf`). The .pptx uses Arial / Courier New /
 Cambria Math.
 
+Formulas (`Formula`) are typeset with LaTeX the way manim does it: `latex` compiles
+them to DVI, `dvisvgm` converts that to SVG, which the PDF draws as vectors (via
+svglib), and `dvipng` to the PNG the .pptx shows. They need a TeX installation
+(`apt install texlive texlive-latex-extra dvisvgm dvipng`). Rendered formulas are
+cached in `~/.cache/slide_style_kit/formulas`, keyed by a hash of their source.
+
 ## Quick start
 
 `python -m slide_style_kit.example` writes `example.pptx` and `example.pdf` into the
@@ -53,7 +59,8 @@ PDFRenderer(deck=deck, path=Path("deck.pdf")).render()
 
 | Module | Content |
 |---|---|
-| `elements` | `Paragraph`, `TextFrame`, `Picture`, `Box`, `Arrow`, `Table` |
+| `elements` | `Paragraph`, `TextFrame`, `Picture`, `Video`, `Formula`, `Box`, `Arrow`, `Table` |
+| `formulas` | `FormulaTypesetter`: LaTeX to SVG and PNG, cached |
 | `components` | `DiagramNode`, `Label`, `Caption`, `TakeAway`, `CodeBlock`, `TodoNote` |
 | `slides` | `TitleSlide`, `TableOfContentsSlide`, `SectionDividerSlide`, `BulletSlide`, `ComparisonSlide`, `ContentSlide`, `PlainSlide` |
 | `deck` | `Deck` and `PageDecoration` (title bar, footer navigation, logo) |

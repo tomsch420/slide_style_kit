@@ -14,10 +14,10 @@ from pathlib import Path
 import numpy as np
 
 from slide_style_kit.assets import Asset
-from slide_style_kit.components import CodeBlock, Matrix, TakeAway
+from slide_style_kit.components import CodeBlock, TakeAway
 from slide_style_kit.deck import Deck, PageDecoration
-from slide_style_kit.elements import Element, Paragraph, Table, TextFrame, Video
-from slide_style_kit.geometry import Length, Position, Rectangle
+from slide_style_kit.elements import Formula, Paragraph, Table, TextFrame, Video
+from slide_style_kit.geometry import Position, Rectangle
 from slide_style_kit.pdf import PDFRenderer
 from slide_style_kit.power_point import PowerPointRenderer
 from slide_style_kit.slides import (
@@ -29,7 +29,7 @@ from slide_style_kit.slides import (
     TableOfContentsSlide,
     TitleSlide,
 )
-from slide_style_kit.style import Alignment, BulletLevel, VerticalAnchor
+from slide_style_kit.style import Alignment, BulletLevel
 
 from animation_catalogue import Animation
 from examples import (
@@ -134,7 +134,7 @@ class IntroductionToOptimization:
 
     adam: Adam = field(default_factory=lambda: Adam(learning_rate=0.001))
     """
-    Adam with its default decays, whose values the Adam slide states.
+    Adam with its default step size and decays, whose values the Adam slides state.
     """
 
     def deck(self) -> Deck:
@@ -164,28 +164,65 @@ class IntroductionToOptimization:
         """
         return Paragraph(text=text, bold=True, space_after=space_after)
 
-    def formula(
-        self, *, text: str, font_size: float | None = None, space_after: float = 10
-    ) -> Paragraph:
+    def display(
+        self,
+        *,
+        latex: str,
+        top: float,
+        height: float = 0.6,
+        left: float = 0.45,
+        width: float = 12.4,
+        font_size: float | None = None,
+        alignment: Alignment = Alignment.CENTER,
+    ) -> Formula:
         """
-        :return: A displayed formula, centred on its own line.
+        :return: The LaTeX formula *latex* set into the given area.
         """
-        return Paragraph(
-            text=text,
-            alignment=Alignment.CENTER,
+        return Formula(
+            latex=latex,
+            area=Rectangle(left=left, top=top, width=width, height=height),
             font_size=font_size or self.formula_font_size,
-            space_after=space_after,
+            alignment=alignment,
         )
 
     def number(self, *, value: float) -> str:
         """
         :return: *value* with as many decimals as it needs and a typographic minus.
         """
-        return f"{value:.4g}".replace("-", "\u2212")
+        return f"{value:.4g}".replace("-", "−")
+
+    def latex_number(self, *, value: float) -> str:
+        """
+        :return: *value* with as many decimals as it needs, as LaTeX.
+        """
+        return f"{value:.4g}"
+
+    def latex_matrix(self, *, values: np.ndarray) -> str:
+        """
+        :return: The matrix, or the column vector, *values* as a LaTeX ``bmatrix``.
+        """
+        rows = values if values.ndim == 2 else values[:, None]
+        body = r" \\ ".join(
+            " & ".join(self.latex_number(value=entry) for entry in row) for row in rows
+        )
+        return rf"\begin{{bmatrix}} {body} \end{{bmatrix}}"
+
+    def latex_inequality(self, *, coefficients: np.ndarray, bound: float) -> str:
+        """
+        :return: :math:`a^T x \\le b` for the two joint velocities, as LaTeX.
+        """
+        terms = [
+            variable
+            if coefficient == 1
+            else f"{self.latex_number(value=coefficient)}\\,{variable}"
+            for coefficient, variable in zip(coefficients, ["x_1", "x_2"])
+            if coefficient != 0
+        ]
+        return f"{' + '.join(terms)} \\le {self.latex_number(value=bound)}"
 
     def point_text(self, *, optimum: Optimum) -> str:
         """
-        :return: The markup of the point of *optimum*, such as ``(2.5, 25)``.
+        :return: The point of *optimum* as text, such as ``(2.5, 25)``.
         """
         first, second = optimum.point
         return f"({self.number(value=first)}, {self.number(value=second)})"
@@ -220,6 +257,16 @@ class IntroductionToOptimization:
         :return: The *paragraphs* set into *area*.
         """
         return TextFrame(area=area, paragraphs=paragraphs, font_size=font_size)
+
+    def line(self, *, text: str, top: float, font_size: float = 17) -> TextFrame:
+        """
+        :return: One paragraph across the slide, starting at *top*.
+        """
+        return self.text_box(
+            area=Rectangle(left=0.45, top=top, width=12.4, height=0.45),
+            paragraphs=[Paragraph(text=text, space_after=0)],
+            font_size=font_size,
+        )
 
     def contents(self, *, highlighted_section: Section | None = None) -> Slide:
         """
@@ -261,104 +308,15 @@ class IntroductionToOptimization:
             subentry_font_size=16,
         )
 
-    def aligned_formulas(
-        self,
-        *,
-        labels: list[str],
-        expressions: list[str],
-        position: Position,
-        label_width: float,
-        expression_width: float,
-        font_size: float = 18,
-        line_height: float = 1.6,
-    ) -> list[Element]:
+    def robot_constraints_latex(self) -> str:
         """
-        :param labels: The markup left of each expression, such as ``max`` or ``s.t.``;
-            an empty string leaves the line unlabelled.
-        :param expressions: The markup of each line of the formula.
-        :param line_height: The height reserved per line, in font sizes.
-        :return: The labels in one column and the expressions aligned in the next.
+        :return: :math:`Gx \\le g` of the robot with both matrices written out.
         """
-        height = len(expressions) * font_size * line_height / Length.points_per_inch
-        return [
-            TextFrame(
-                area=Rectangle(
-                    left=position.x, top=position.y, width=label_width, height=height
-                ),
-                paragraphs=[Paragraph(text=label) for label in labels],
-                font_size=font_size,
-            ),
-            TextFrame(
-                area=Rectangle(
-                    left=position.x + label_width,
-                    top=position.y,
-                    width=expression_width,
-                    height=height,
-                ),
-                paragraphs=[Paragraph(text=expression) for expression in expressions],
-                font_size=font_size,
-            ),
-        ]
-
-    def matrix_label(
-        self, *, text: str, area: Rectangle, font_size: float = 18
-    ) -> TextFrame:
-        """
-        :return: The markup *text* right-aligned and vertically centred in *area*,
-            in front of a matrix.
-        """
-        return TextFrame(
-            area=area,
-            paragraphs=[Paragraph(text=text, alignment=Alignment.RIGHT, space_after=0)],
-            font_size=font_size,
-            anchor=VerticalAnchor.MIDDLE,
+        return (
+            rf"Gx \le g, \quad G = "
+            rf"{self.latex_matrix(values=self.robot.constraint_matrix)}, \quad g = "
+            rf"{self.latex_matrix(values=self.robot.constraint_bounds)}"
         )
-
-    def inequality_text(self, *, coefficients: np.ndarray, bound: float) -> str:
-        """
-        :return: The markup of :math:`a^T x \\le b` for the two joint velocities, such
-            as ``x₁ + 0.5 x₂ ≤ 15``.
-        """
-        terms = [
-            variable
-            if coefficient == 1
-            else f"{self.number(value=coefficient)} {variable}"
-            for coefficient, variable in zip(coefficients, ["x\u2081", "x\u2082"])
-            if coefficient != 0
-        ]
-        return f"{{y:{' + '.join(terms)} \u2264 {self.number(value=bound)}}}"
-
-    def matrix_entries(self, *, values: np.ndarray) -> list[list[str]]:
-        """
-        :return: The entries of the matrix or column vector *values* as text.
-        """
-        rows = values if values.ndim == 2 else values[:, None]
-        return [[self.number(value=entry) for entry in row] for row in rows]
-
-    def constraint_matrices(self, *, top: float, left: float = 6.9) -> list[Element]:
-        """
-        :return: The constraints :math:`Gx \\le g` of the robot as matrices, from *top*
-            down.
-        """
-        return [
-            self.matrix_label(
-                text="{y:s.t.   Gx \u2264 g,   G =}",
-                area=Rectangle(left=left, top=top, width=2.6, height=1.6),
-            ),
-            Matrix(
-                position=Position(x=left + 2.7, y=top),
-                entries=self.matrix_entries(values=self.robot.constraint_matrix),
-            ),
-            self.matrix_label(
-                text="{y:,   g =}",
-                area=Rectangle(left=left + 3.85, top=top, width=0.75, height=1.6),
-            ),
-            Matrix(
-                position=Position(x=left + 4.7, y=top),
-                entries=self.matrix_entries(values=self.robot.constraint_bounds),
-                column_width=0.6,
-            ),
-        ]
 
     # %% introduction
 
@@ -385,7 +343,7 @@ class IntroductionToOptimization:
                 text_area=Rectangle(left=0.45, top=1.4, width=12.4, height=5.3),
                 font_size=18,
                 paragraphs=[
-                    Paragraph(text="After this lecture you can \u2026", space_after=12),
+                    Paragraph(text="After this lecture you can …", space_after=12),
                     *[
                         Paragraph(text=f"{index}. {goal}", indent=0.3, space_after=8)
                         for index, goal in enumerate(
@@ -424,7 +382,7 @@ class IntroductionToOptimization:
                                     "Reasoning: what follows from a knowledge base "
                                     "(resolution, SLD, Datalog)",
                                     "Constraint logic programming: constraints over "
-                                    "{a:numbers} in rule bodies \u2013 announced for "
+                                    "{a:numbers} in rule bodies – announced for "
                                     "today",
                                 ],
                                 space_after=8,
@@ -439,11 +397,10 @@ class IntroductionToOptimization:
                                 texts=[
                                     "Infinitely many candidates, each with a score: "
                                     "find the {a:best} one",
-                                    "Lecture 01: the performance measure "
-                                    "{y:state \u00d7 action \u2192 \u211d} \u2013 "
-                                    "optimization picks the action",
-                                    "Lecture 02: how does Giskard turn \u201cgrasp the "
-                                    "cup\u201d into joint velocities?",
+                                    "Lecture 01: the performance measure scores state "
+                                    "and action – optimization picks the action",
+                                    "Lecture 02: how does Giskard turn “grasp the "
+                                    "cup” into joint velocities?",
                                 ],
                                 space_after=8,
                             ),
@@ -488,7 +445,7 @@ class IntroductionToOptimization:
                                 (
                                     "Uncertainty",
                                     "Thu 03.12.",
-                                    "How do we reason with incomplete knowledge \u2013 "
+                                    "How do we reason with incomplete knowledge – "
                                     "and fit models by {a:maximizing their "
                                     "likelihood}?",
                                 ),
@@ -501,7 +458,7 @@ class IntroductionToOptimization:
                         )
                     ],
                     TakeAway(
-                        text="Today's tools \u2013 gradients, constraints, KKT \u2013 "
+                        text="Today's tools – gradients, constraints, KKT – "
                         "are what the next lectures optimize with."
                     ),
                 ],
@@ -534,7 +491,7 @@ class IntroductionToOptimization:
                     *Paragraph.bullet_points(
                         texts=[
                             "{b:Decision variables:} the velocities of the joints",
-                            "{b:Goals} (\u201cgripper to the cup\u201d) become {i:soft} "
+                            "{b:Goals} (“gripper to the cup”) become {i:soft} "
                             "constraints: violating them costs",
                             "{b:Joint limits} and {b:collision avoidance} are {i:hard} "
                             "constraints",
@@ -549,7 +506,7 @@ class IntroductionToOptimization:
                     ),
                     Paragraph(
                         text="The real QP has hundreds of variables and constraints. "
-                        "Today we build and solve a version with {a:two joints} \u2013 "
+                        "Today we build and solve a version with {a:two joints} – "
                         "small enough to draw."
                     ),
                 ],
@@ -561,57 +518,49 @@ class IntroductionToOptimization:
                 section=Section.INTRODUCTION,
                 items=[
                     self.text_box(
-                        area=Rectangle(left=0.45, top=1.3, width=12.4, height=1.5),
+                        area=Rectangle(left=0.45, top=1.3, width=12.4, height=1.0),
                         paragraphs=Paragraph.bullet_points(
                             texts=[
-                                "Two joints: {y:x\u2081} = velocity of the {a:base}, "
-                                "{y:x\u2082} = velocity of the {a:arm}, both in cm/s",
-                                "The gripper moves forward at {y:v = x\u2081 + x\u2082}, "
-                                "the elbow at {y:x\u2081 + "
-                                f"{self.number(value=elbow_share)} x\u2082}}",
+                                "Two joints: x₁ = velocity of the {a:base}, "
+                                "x₂ = velocity of the {a:arm}, both in cm/s",
+                                "The gripper moves forward at x₁ + x₂, the "
+                                "elbow at x₁ + "
+                                f"{self.number(value=elbow_share)} x₂",
                             ],
                             space_after=6,
                         ),
                     ),
                     Table(
-                        position=Position(x=0.9, y=2.8),
+                        position=Position(x=0.9, y=2.5),
                         column_widths=[2.6, 3.2, 5.9],
                         rows=[
                             ["Constraint", "Formula", "Meaning"],
                             [
                                 "Base limit",
-                                self.inequality_text(
-                                    coefficients=robot.constraint_matrix[0],
-                                    bound=base_limit,
-                                ),
+                                f"x₁ ≤ {self.number(value=base_limit)}",
                                 "the base is slow",
                             ],
                             [
                                 "Arm limit",
-                                self.inequality_text(
-                                    coefficients=robot.constraint_matrix[1],
-                                    bound=arm_limit,
-                                ),
+                                f"x₂ ≤ {self.number(value=arm_limit)}",
                                 "the arm is faster",
                             ],
                             [
                                 "Collision avoidance",
-                                self.inequality_text(
-                                    coefficients=robot.constraint_matrix[2],
-                                    bound=elbow_limit,
-                                ),
+                                f"x₁ + {self.number(value=elbow_share)} x₂ "
+                                f"≤ {self.number(value=elbow_limit)}",
                                 "the elbow approaches a shelf at most "
                                 f"{self.number(value=elbow_limit)} cm/s",
                             ],
                             [
                                 "Forward only",
-                                "{y:x\u2081 \u2265 0,  x\u2082 \u2265 0}",
+                                "x₁ ≥ 0,  x₂ ≥ 0",
                                 "no joint moves away from the cup",
                             ],
                             [
                                 "Goal (soft)",
-                                "{y:x\u2081 + x\u2082 \u2248 "
-                                f"{self.number(value=robot.desired_gripper_speed)}}}",
+                                "x₁ + x₂ ≈ "
+                                f"{self.number(value=robot.desired_gripper_speed)}",
                                 "the gripper should approach the cup at "
                                 f"{self.number(value=robot.desired_gripper_speed)} "
                                 "cm/s",
@@ -637,39 +586,34 @@ class IntroductionToOptimization:
                 title="What Is Optimization?",
                 section=Section.INTRODUCTION,
                 items=[
-                    TextFrame(
-                        area=Rectangle(left=0.45, top=1.25, width=12.4, height=1.2),
-                        paragraphs=[
-                            Paragraph(
-                                text="Choose the {a:decision variables} {y:x} that "
-                                "minimize an {a:objective} {y:f}:",
-                                space_after=10,
-                            ),
-                            self.formula(
-                                text="{y:min\u2093 f(x)}    subject to (s.t.)    "
-                                "{y:x \u2208 C}"
-                            ),
-                        ],
+                    self.line(
+                        text="Choose the {a:decision variables} x that minimize an "
+                        "{a:objective} f, within the {a:feasible region} C:",
+                        top=1.25,
                         font_size=18,
+                    ),
+                    self.display(
+                        latex=r"\min_{x}\ f(x) \quad \text{s.t.} \quad x \in C",
+                        top=1.8,
                     ),
                     self.video(
                         animation=Animation.FEASIBLE_REGION,
-                        position=Position(x=0.6, y=2.5),
+                        position=Position(x=0.6, y=2.6),
                         width=4.2,
                     ),
                     TextFrame(
-                        area=Rectangle(left=0.6, top=5.7, width=5.4, height=0.55),
+                        area=Rectangle(left=0.6, top=5.75, width=5.4, height=0.45),
                         paragraphs=[
                             Paragraph(
-                                text="{a:Feasible region C}: all points that satisfy "
-                                "the constraints.",
+                                text="s.t. = “subject to”; C = all points "
+                                "that satisfy the constraints.",
                                 space_after=0,
                             )
                         ],
-                        font_size=14,
+                        font_size=13,
                     ),
                     self.text_box(
-                        area=Rectangle(left=6.3, top=2.6, width=6.6, height=3.6),
+                        area=Rectangle(left=6.3, top=2.7, width=6.6, height=3.5),
                         paragraphs=[
                             self.heading(text="Examples:"),
                             *Paragraph.bullet_points(
@@ -677,7 +621,7 @@ class IntroductionToOptimization:
                                     "{b:Robot:} joint velocities that reach the goal "
                                     "within the limits",
                                     "{b:Learning:} parameters that minimize a loss or "
-                                    "maximize a likelihood ({y:\u2192} Uncertainty)",
+                                    "maximize a likelihood (→ Uncertainty)",
                                     "{b:Agent:} the action with the best performance "
                                     "measure (lecture 01)",
                                 ],
@@ -695,46 +639,38 @@ class IntroductionToOptimization:
                 title="Constrained Optimization Problems",
                 section=Section.INTRODUCTION,
                 items=[
-                    TextFrame(
-                        area=Rectangle(left=0.45, top=1.6, width=12.4, height=0.5),
-                        paragraphs=[
-                            Paragraph(
-                                text="The general form of an optimization problem:"
-                            )
-                        ],
+                    self.line(
+                        text="The general form of an optimization problem:",
+                        top=1.4,
                         font_size=18,
                     ),
-                    *self.aligned_formulas(
-                        labels=["{y:min}", "{y:s.t.}", ""],
-                        expressions=[
-                            "{y:f(x),   x \u2208 \u211d\u207f}",
-                            "{y:g\u1d62(x) \u2264 0,   i = 1, \u2026, m}",
-                            "{y:h\u2c7c(x) = 0,   j = 1, \u2026, p}",
-                        ],
-                        position=Position(x=0.9, y=2.6),
-                        label_width=0.9,
-                        expression_width=4.0,
+                    self.display(
+                        latex=r"\begin{aligned} \min_{x \in \mathbb{R}^n}\ & f(x) \\ "
+                        r"\text{s.t.}\ & g_i(x) \le 0, \quad i = 1, \dots, m \\ "
+                        r"& h_j(x) = 0, \quad j = 1, \dots, p \end{aligned}",
+                        top=2.1,
+                        height=1.6,
+                        left=0.45,
+                        width=5.6,
                     ),
                     self.text_box(
-                        area=Rectangle(left=6.3, top=2.4, width=6.6, height=2.6),
+                        area=Rectangle(left=6.3, top=2.1, width=6.6, height=2.0),
                         paragraphs=Paragraph.bullet_points(
                             texts=[
-                                "{y:f(x)} is the {a:objective function}",
-                                "{y:x} are the {a:decision variables}",
-                                "{y:g\u1d62(x) \u2264 0} are {y:m} inequality "
-                                "constraints",
-                                "{y:h\u2c7c(x) = 0} are {y:p} equality constraints",
+                                "f is the {a:objective function}",
+                                "x are the n {a:decision variables}",
+                                "each gᵢ is an {a:inequality constraint}",
+                                "each h{y:ⱼ} is an {a:equality constraint}",
                             ],
                             space_after=6,
                         ),
                     ),
                     self.text_box(
-                        area=Rectangle(left=0.45, top=5.1, width=12.4, height=1.1),
+                        area=Rectangle(left=0.45, top=4.4, width=12.4, height=0.8),
                         paragraphs=[
                             Paragraph(
-                                text="{b:Maximizing} is minimizing the negative: "
-                                "{y:max f(x) = \u2212min (\u2212f(x))}. The robot's LP "
-                                "maximizes, everything else today minimizes.",
+                                text="{b:Maximizing} f is minimizing −f. The "
+                                "robot's LP maximizes; everything else today minimizes.",
                                 space_after=0,
                             )
                         ],
@@ -755,12 +691,8 @@ class IntroductionToOptimization:
                         column_widths=[2.4, 6.4],
                         rows=[
                             ["Problem", "Form"],
-                            ["{a:Unconstrained}", "{y:min\u2093 f(x)}"],
-                            [
-                                "{a:Constrained}",
-                                "{y:min\u2093 f(x)   s.t.   g\u1d62(x) \u2264 0,  "
-                                "h\u2c7c(x) = 0}",
-                            ],
+                            ["{a:Unconstrained}", "no constraints at all"],
+                            ["{a:Constrained}", "inequality and equality constraints"],
                             ["{a:Linear (LP)}", "objective linear, constraints linear"],
                             [
                                 "{a:Quadratic (QP)}",
@@ -768,8 +700,8 @@ class IntroductionToOptimization:
                             ],
                             [
                                 "{a:Convex}",
-                                "feasible set and objective convex {y:\u2192} every "
-                                "local minimum is global",
+                                "feasible set and objective convex: every local "
+                                "minimum is global",
                             ],
                             ["{a:Non-convex}", "harder, many local minima"],
                         ],
@@ -815,55 +747,42 @@ class IntroductionToOptimization:
                 title="Smooth Functions and the Gradient",
                 section=Section.UNCONSTRAINED,
                 items=[
-                    TextFrame(
-                        area=Rectangle(left=0.45, top=1.3, width=12.4, height=2.2),
+                    self.text_box(
+                        area=Rectangle(left=0.45, top=1.3, width=12.4, height=1.7),
                         paragraphs=[
                             self.heading(text="Smooth functions:"),
                             *Paragraph.bullet_points(
                                 texts=[
                                     Paragraph(
-                                        text="{y:f(x)} has a well-defined derivative "
-                                        "(gradient) everywhere, and it changes "
-                                        "continuously.",
+                                        text="f has a derivative everywhere, and it "
+                                        "changes continuously.",
                                         level=BulletLevel.FIRST,
                                         space_after=14,
                                     ),
                                 ],
                                 space_after=4,
                             ),
-                            self.heading(text="Gradient {y:\u2207f(x)}:"),
-                            *Paragraph.bullet_points(
-                                texts=["Collects all partial derivatives of {y:f}."]
+                            self.heading(
+                                text="The gradient collects all partial derivatives "
+                                "of f:"
                             ),
                         ],
-                        font_size=17,
                     ),
-                    self.matrix_label(
-                        text="{y:\u2207f(x) =}",
-                        area=Rectangle(left=4.4, top=3.4, width=1.6, height=1.2),
+                    self.display(
+                        latex=r"\nabla f(x) = \begin{bmatrix} \partial f / \partial "
+                        r"x_1 \\ \vdots \\ \partial f / \partial x_n \end{bmatrix}",
+                        top=3.0,
+                        height=1.4,
                     ),
-                    Matrix(
-                        position=Position(x=6.1, y=3.4),
-                        entries=[
-                            ["{y:\u2202f/\u2202x\u2081}"],
-                            ["{y:\u22ee}"],
-                            ["{y:\u2202f/\u2202x\u2099}"],
-                        ],
-                        column_width=1.0,
-                        row_height=0.4,
-                    ),
-                    TextFrame(
-                        area=Rectangle(left=0.45, top=4.85, width=12.4, height=1.3),
+                    self.text_box(
+                        area=Rectangle(left=0.45, top=4.6, width=12.4, height=1.4),
                         paragraphs=Paragraph.bullet_points(
                             texts=[
-                                "Describes how {y:f(x)} changes locally as we move in "
-                                "different directions.",
-                                "The gradient tells us how to {i:move} to reduce the "
-                                "function value.",
+                                "Entry i: how fast f changes when only xᵢ moves.",
+                                "Together: the direction in which f grows fastest.",
                             ],
                             space_after=6,
                         ),
-                        font_size=17,
                     ),
                     TakeAway(text="The gradient is the local map of the landscape."),
                 ],
@@ -872,74 +791,73 @@ class IntroductionToOptimization:
                 title="Geometric Meaning of the Gradient",
                 section=Section.UNCONSTRAINED,
                 items=[
-                    TextFrame(
-                        area=Rectangle(left=0.45, top=1.25, width=12.4, height=1.3),
+                    self.text_box(
+                        area=Rectangle(left=0.45, top=1.25, width=12.4, height=1.0),
                         paragraphs=Paragraph.bullet_points(
                             texts=[
-                                "{y:\u2207f(x)} points in the direction of the "
-                                "{a:steepest increase} of {y:f}.",
-                                "Moving in the opposite direction makes {y:f(x)} "
-                                "decrease fastest.",
+                                "{y:∇}f(x) points in the direction of the {a:steepest "
+                                "increase} of f.",
+                                "Moving in the opposite direction makes f decrease "
+                                "fastest.",
                             ],
                             space_after=4,
                         ),
-                        font_size=17,
                     ),
                     self.video(
                         animation=Animation.GRADIENT_BOWL,
                         position=Position(x=3.9, y=2.3),
                         width=5.6,
                     ),
-                    TakeAway(
-                        text="To minimize {y:f(x)}, move along {y:\u2212\u2207f(x)}."
-                    ),
+                    TakeAway(text="To minimize f, move along −{y:∇}f."),
                 ],
             ),
             BulletSlide(
-                title="Critical Points and \u201cGradient = 0\u201d",
+                title="Critical Points: Where the Gradient Is Zero",
                 section=Section.UNCONSTRAINED,
-                text_area=Rectangle(left=0.45, top=1.25, width=7.6, height=5.0),
+                text_area=Rectangle(left=0.45, top=1.3, width=7.6, height=1.0),
                 font_size=17,
                 paragraphs=[
-                    self.heading(text="Unconstrained minimum:"),
-                    *Paragraph.bullet_points(
-                        texts=[
-                            "For smooth functions in {y:\u211d\u207f}, a minimum must "
-                            "satisfy:"
-                        ],
-                        space_after=4,
-                    ),
-                    self.formula(text="{y:\u2207f(x*) = 0}", font_size=18),
-                    *Paragraph.bullet_points(
-                        texts=[
-                            Paragraph(
-                                text="Otherwise {y:\u2212\u2207f(x*)} would be a "
-                                "direction that decreases {y:f}.",
-                                level=BulletLevel.FIRST,
-                                space_after=14,
-                            ),
-                        ],
-                        space_after=4,
-                    ),
-                    self.heading(text="Types of critical points:"),
-                    *Paragraph.bullet_points(
-                        texts=["minima,", "maxima,", "saddle points."], space_after=2
-                    ),
                     Paragraph(
-                        text="The {a:Hessian} {y:\u2207\u00b2f(x*)} tells them apart: "
-                        "positive definite {y:\u2192} minimum, indefinite {y:\u2192} "
-                        "saddle point."
+                        text="At a minimum of a smooth function without constraints, "
+                        "no direction goes downhill, so",
+                        space_after=0,
                     ),
                 ],
                 items=[
+                    self.display(
+                        latex=r"\nabla f(x^*) = 0", top=2.3, left=0.45, width=7.6
+                    ),
+                    self.text_box(
+                        area=Rectangle(left=0.45, top=3.1, width=7.6, height=3.1),
+                        paragraphs=[
+                            Paragraph(
+                                text="Points with zero gradient are {a:critical "
+                                "points}. Three kinds:",
+                                space_after=6,
+                            ),
+                            *Paragraph.bullet_points(
+                                texts=[
+                                    "{b:minimum:} curves upward in every direction",
+                                    "{b:maximum:} curves downward in every direction",
+                                    "{b:saddle point:} up in one direction, down in "
+                                    "another",
+                                ],
+                                space_after=4,
+                            ),
+                            Paragraph(
+                                text="The second derivatives (the {a:Hessian} "
+                                "{y:∇}²f) tell them apart."
+                            ),
+                        ],
+                    ),
                     self.video(
                         animation=Animation.CRITICAL_POINTS,
-                        position=Position(x=8.2, y=2.0),
+                        position=Position(x=8.2, y=1.9),
                         width=4.6,
-                    )
+                    ),
                 ],
-                take_away="{y:\u2207f = 0} is necessary, not sufficient \u2013 unless "
-                "{y:f} is convex.",
+                take_away="Zero gradient is necessary for a minimum, not sufficient "
+                "– unless f is convex.",
             ),
         ]
 
@@ -947,100 +865,113 @@ class IntroductionToOptimization:
         """
         :return: The slides defining and testing convexity, and why it matters.
         """
-        eigenvalues = np.linalg.eigvalsh(self.robot.quadratic_cost_matrix)
         return [
-            BulletSlide(
-                title="Convex Sets and Convex Functions",
+            ContentSlide(
+                title="Convex Sets",
                 section=Section.UNCONSTRAINED,
-                text_area=Rectangle(left=0.45, top=1.3, width=12.4, height=1.9),
-                font_size=16,
-                paragraphs=[
-                    Paragraph(
-                        text="{b:Convex set} {y:C}: the segment between any two points "
-                        "stays inside,   {y:\u03b8x + (1 \u2212 \u03b8)y \u2208 C}  for "
-                        "all {y:x, y \u2208 C,  \u03b8 \u2208 [0, 1]}",
-                        space_after=8,
+                items=[
+                    self.line(
+                        text="A set C is {a:convex} if the segment between any two of "
+                        "its points stays inside C:",
+                        top=1.3,
                     ),
-                    Paragraph(
-                        text="{b:Convex function} {y:f}: the chord lies above the graph,"
-                        "   {y:f(\u03b8x + (1 \u2212 \u03b8)y) \u2264 \u03b8f(x) + "
-                        "(1 \u2212 \u03b8)f(y)}",
-                        space_after=8,
+                    self.display(
+                        latex=r"\theta x + (1 - \theta) y \in C \quad \text{for all } "
+                        r"x, y \in C \text{ and } \theta \in [0, 1]",
+                        top=1.85,
                     ),
-                    Paragraph(
-                        text="Every polyhedron {y:{x : Gx \u2264 g}} is convex \u2013 such "
-                        "as the toy robot's feasible velocities.",
-                        space_after=0,
+                    self.line(
+                        text="θ = 1 gives x, θ = 0 gives y, the values "
+                        "between give the points of the segment.",
+                        top=2.5,
+                        font_size=15,
+                    ),
+                    self.video(
+                        animation=Animation.CONVEX_SET,
+                        position=Position(x=3.65, y=3.0),
+                        height=3.2,
+                    ),
+                    TakeAway(
+                        text="The robot's feasible velocities (left) are convex: linear "
+                        "constraints always give a convex set."
                     ),
                 ],
+            ),
+            ContentSlide(
+                title="Convex Functions",
+                section=Section.UNCONSTRAINED,
                 items=[
+                    self.line(
+                        text="A function f is {a:convex} if the chord between two "
+                        "points of its graph never lies below the graph:",
+                        top=1.3,
+                    ),
+                    self.display(
+                        latex=r"\underbrace{f(\theta x + (1 - \theta) y)}"
+                        r"_{\text{graph}} \;\le\; \underbrace{\theta f(x) + "
+                        r"(1 - \theta) f(y)}_{\text{chord}}",
+                        top=1.85,
+                        height=0.9,
+                    ),
                     self.video(
                         animation=Animation.CONVEXITY,
-                        position=Position(x=3.65, y=3.25),
-                        height=3.0,
-                    )
+                        position=Position(x=3.65, y=3.0),
+                        height=3.2,
+                    ),
+                    TakeAway(
+                        text="Convex functions have no bumps in which a descent could "
+                        "get stuck."
+                    ),
                 ],
-                take_away="Linear constraints always give a convex feasible region.",
             ),
             ContentSlide(
                 title="Testing Convexity",
                 section=Section.UNCONSTRAINED,
                 items=[
+                    self.line(
+                        text="{b:One variable:} f is convex if its slope never "
+                        "decreases – the graph curves upward:",
+                        top=1.3,
+                    ),
+                    self.display(
+                        latex=r"f''(x) \ge 0 \ \text{for all } x \qquad "
+                        r"\text{e.g. } f(x) = x^2: \ f''(x) = 2 \ge 0",
+                        top=1.8,
+                    ),
+                    self.line(
+                        text="{b:Several variables:} the matrix of second derivatives, "
+                        "the {a:Hessian} {y:∇}²f, must curve upward in every "
+                        "direction v:",
+                        top=2.6,
+                    ),
+                    self.display(
+                        latex=r"v^\top \nabla^2 f(x)\, v \ge 0 \ \text{for all } v "
+                        r"\qquad \Longleftrightarrow \qquad \text{all eigenvalues of } "
+                        r"\nabla^2 f(x) \ge 0",
+                        top=3.15,
+                    ),
                     self.text_box(
-                        area=Rectangle(left=0.45, top=1.3, width=12.4, height=1.1),
+                        area=Rectangle(left=0.45, top=3.95, width=12.4, height=2.25),
                         paragraphs=[
                             Paragraph(
-                                text="A twice differentiable {y:f} is convex if and only "
-                                "if its Hessian is positive semidefinite everywhere:",
+                                text="Such a matrix is called {a:positive "
+                                "semidefinite}, written {y:⪰} 0.",
+                                space_after=10,
+                            ),
+                            *Paragraph.bullet_points(
+                                texts=[
+                                    "A quadratic ½ xᵀQx + cᵀx has the "
+                                    "Hessian Q: it is convex exactly when all "
+                                    "eigenvalues of Q are ≥ 0.",
+                                    "Convex: linear functions, x², −log x. "
+                                    "Not convex: sin x, the loss of a neural network.",
+                                ],
                                 space_after=6,
                             ),
-                            self.formula(
-                                text="{y:\u2207\u00b2f(x) \u2ab0 0}      (one variable: "
-                                "{y:f\u2033(x) \u2265 0})",
-                                font_size=18,
-                                space_after=0,
-                            ),
-                        ],
-                    ),
-                    self.text_box(
-                        area=Rectangle(left=0.45, top=2.6, width=6.0, height=3.6),
-                        paragraphs=[
-                            self.heading(text="Convex"),
-                            *Paragraph.bullet_points(
-                                texts=[
-                                    "linear functions {y:c\u1d40x}",
-                                    "{y:\u2016x\u2016\u00b2} and {y:\u00bd x\u1d40Qx + "
-                                    "c\u1d40x} with {y:Q \u2ab0 0}",
-                                    "{y:\u2212log x} \u2013 the negative "
-                                    "log-likelihood comes back later",
-                                    "sums with non-negative weights, and a convex "
-                                    "function of a linear map",
-                                ],
-                                space_after=5,
-                            ),
                         ],
                         font_size=16,
                     ),
-                    self.text_box(
-                        area=Rectangle(left=6.9, top=2.6, width=6.0, height=3.6),
-                        paragraphs=[
-                            self.heading(text="Not convex"),
-                            *Paragraph.bullet_points(
-                                texts=[
-                                    "{y:sin x}, the peaks function",
-                                    "the loss of a neural network",
-                                    "the free space around an obstacle",
-                                ],
-                                space_after=5,
-                            ),
-                        ],
-                        font_size=16,
-                    ),
-                    TakeAway(
-                        text="The robot's cost matrix {y:Q} has eigenvalues "
-                        f"{self.number(value=eigenvalues[0])} and "
-                        f"{self.number(value=eigenvalues[1])}: its cost is convex."
-                    ),
+                    TakeAway(text="Convex = curves upward in every direction."),
                 ],
             ),
             BulletSlide(
@@ -1051,16 +982,15 @@ class IntroductionToOptimization:
                 paragraphs=[
                     self.heading(text="Theorem:"),
                     Paragraph(
-                        text="If {y:f} and the feasible region {y:C} are convex, then",
+                        text="If f and the feasible region C are convex, then",
                         space_after=4,
                     ),
                     *Paragraph.bullet_points(
                         texts=[
                             "every {a:local} minimum is a {a:global} minimum,",
-                            "the minimizers form a convex set,",
                             Paragraph(
-                                text="without constraints, {y:\u2207f(x*) = 0} is "
-                                "{i:sufficient} for a minimum.",
+                                text="without constraints, a zero gradient is "
+                                "{i:enough} for a minimum.",
                                 level=BulletLevel.FIRST,
                                 space_after=14,
                             ),
@@ -1069,16 +999,17 @@ class IntroductionToOptimization:
                     ),
                     self.heading(text="Why:"),
                     Paragraph(
-                        text="If {y:y} were better than a local minimum {y:x}, convexity "
-                        "makes every point on the segment from {y:x} to {y:y} better "
-                        "than {y:x} \u2013 also the points arbitrarily close to {y:x}.",
+                        text="Suppose y were better than a local minimum x. The chord "
+                        "from x to y lies above the graph, so points on the way to y "
+                        "– even ones right next to x – would be better than "
+                        "x. Then x was no local minimum.",
                         space_after=14,
                     ),
                     self.heading(text="Consequence:"),
                     *Paragraph.bullet_points(
                         texts=[
-                            "Convex problems (LP, QP with {y:Q \u2ab0 0}, least squares) "
-                            "are solved reliably, to the global optimum.",
+                            "Convex problems (LP, convex QP, least squares) are solved "
+                            "reliably, to the global optimum.",
                             "Non-convex problems (neural networks) settle for a good "
                             "local minimum.",
                         ],
@@ -1094,76 +1025,122 @@ class IntroductionToOptimization:
         """
         :return: The slides minimizing a quadratic function and linear least squares.
         """
+        rows = [
+            (
+                "function",
+                r"f(x) = \tfrac{1}{2} q x^2 + c x",
+                r"f(x) = \tfrac{1}{2} x^\top Q x + c^\top x",
+            ),
+            ("derivative", r"f'(x) = q x + c", r"\nabla f(x) = Q x + c"),
+            ("set to zero", r"q x^* + c = 0", r"Q x^* + c = 0"),
+            ("solve", r"x^* = -c / q", r"x^* = -Q^{-1} c"),
+        ]
+        row_top, row_height = 1.95, 0.62
         return [
-            BulletSlide(
+            ContentSlide(
                 title="Example: Minimizing a Quadratic Function",
                 section=Section.UNCONSTRAINED,
-                text_area=Rectangle(left=0.45, top=1.3, width=12.4, height=4.9),
-                font_size=18,
-                paragraphs=[
-                    self.heading(text="Quadratic model:"),
-                    self.formula(
-                        text="{y:f(x) = \u00bd x\u1d40Qx + c\u1d40x,}", space_after=4
+                items=[
+                    self.text_box(
+                        area=Rectangle(left=2.6, top=1.35, width=4.6, height=0.45),
+                        paragraphs=[self.heading(text="One variable", space_after=0)],
                     ),
-                    Paragraph(
-                        text="where {y:Q} is symmetric ({y:Q = Q\u1d40}) and positive "
-                        "definite.",
-                        space_after=14,
+                    self.text_box(
+                        area=Rectangle(left=7.4, top=1.35, width=5.5, height=0.45),
+                        paragraphs=[self.heading(text="Many variables", space_after=0)],
                     ),
-                    self.heading(text="Gradient:"),
-                    self.formula(
-                        text="{y:\u2207f(x) = \u00bd (Q + Q\u1d40)x + c = Qx + c}",
-                        space_after=14,
+                    *[
+                        element
+                        for index, (label, single, many) in enumerate(rows)
+                        for element in [
+                            self.text_box(
+                                area=Rectangle(
+                                    left=0.45,
+                                    top=row_top + index * row_height + 0.1,
+                                    width=2.0,
+                                    height=0.4,
+                                ),
+                                paragraphs=[Paragraph(text=label, space_after=0)],
+                                font_size=16,
+                            ),
+                            self.display(
+                                latex=single,
+                                top=row_top + index * row_height,
+                                height=0.55,
+                                left=2.6,
+                                width=4.6,
+                                alignment=Alignment.LEFT,
+                            ),
+                            self.display(
+                                latex=many,
+                                top=row_top + index * row_height,
+                                height=0.55,
+                                left=7.4,
+                                width=5.5,
+                                alignment=Alignment.LEFT,
+                            ),
+                        ]
+                    ],
+                    self.text_box(
+                        area=Rectangle(left=0.45, top=4.6, width=12.4, height=1.6),
+                        paragraphs=Paragraph.bullet_points(
+                            texts=[
+                                "Dividing by q needs q > 0; inverting Q needs Q "
+                                "{a:positive definite} (all eigenvalues > 0).",
+                                "Then f is a bowl curving upward in every direction, "
+                                "and x* is its unique minimum.",
+                            ],
+                            space_after=6,
+                        ),
+                        font_size=16,
                     ),
-                    self.heading(text="Critical point:"),
-                    self.formula(
-                        text="{y:Qx* + c = 0      \u27f9      x* = \u2212Q\u207b\u00b9c}",
-                        space_after=14,
-                    ),
-                    *Paragraph.bullet_points(
-                        texts=[
-                            "Convex, with a unique global minimum.",
-                            "A local approximation of every smooth function near a "
-                            "minimum.",
-                        ],
-                        space_after=4,
+                    TakeAway(
+                        text="Same steps as in school, with a matrix instead of a "
+                        "number – Giskard's cost is such a quadratic."
                     ),
                 ],
-                take_away="Giskard's cost is a quadratic like this one.",
             ),
-            BulletSlide(
+            ContentSlide(
                 title="Linear Least Squares",
                 section=Section.UNCONSTRAINED,
-                text_area=Rectangle(left=0.45, top=1.6, width=12.4, height=4.6),
-                font_size=18,
-                paragraphs=[
-                    self.heading(text="Problem:"),
-                    self.formula(
-                        text="{y:min\u2093 \u2016Ax \u2212 b\u2016\u00b2 = "
-                        "x\u1d40(A\u1d40A)x \u2212 2b\u1d40Ax + b\u1d40b}"
+                items=[
+                    self.line(
+                        text="Fit x to m measurements: row aᵢ of A holds the inputs "
+                        "of measurement i, bᵢ its measured value.",
+                        top=1.3,
                     ),
-                    *Paragraph.bullet_points(
-                        texts=[
-                            "{y:A \u2208 \u211d\u1d50\u02e3\u207f,  b \u2208 "
-                            "\u211d\u1d50}: one row per measurement.",
-                            "A quadratic with {y:Q = 2A\u1d40A}, so it has a "
-                            "{a:closed-form solution}:",
-                        ],
-                        space_after=4,
+                    self.display(
+                        latex=r"\min_x\ \|Ax - b\|^2 = \sum_{i=1}^{m} "
+                        r"\underbrace{(a_i^\top x - b_i)^2}_{\text{squared error of "
+                        r"measurement } i}",
+                        top=1.85,
+                        height=1.0,
                     ),
-                    self.formula(
-                        text="{y:x* = (A\u1d40A)\u207b\u00b9A\u1d40b}", space_after=18
+                    self.line(
+                        text="The gradient 2Aᵀ(Ax − b) is zero at the "
+                        "{a:normal equations}, which have a closed-form solution:",
+                        top=3.05,
                     ),
-                    *Paragraph.bullet_points(
-                        texts=[
-                            "Used in regression, calibration and data fitting.",
-                            "For many parameters or many samples: gradient descent "
-                            "instead.",
-                        ],
-                        space_after=4,
+                    self.display(
+                        latex=r"A^\top A\, x^* = A^\top b \qquad \Longrightarrow "
+                        r"\qquad x^* = (A^\top A)^{-1} A^\top b",
+                        top=3.6,
+                    ),
+                    self.text_box(
+                        area=Rectangle(left=0.45, top=4.5, width=12.4, height=1.6),
+                        paragraphs=Paragraph.bullet_points(
+                            texts=[
+                                "Used in regression, calibration and data fitting.",
+                                "For many parameters or many measurements: gradient "
+                                "descent instead.",
+                            ],
+                            space_after=6,
+                        ),
+                    ),
+                    TakeAway(
+                        text="Least squares comes back as maximum likelihood at the end."
                     ),
                 ],
-                take_away="Least squares comes back as maximum likelihood at the end.",
             ),
         ]
 
@@ -1177,6 +1154,7 @@ class IntroductionToOptimization:
             self.contents(highlighted_section=Section.GRADIENT_METHODS),
             *self.gradient_descent_slides(),
             *self.gradient_descent_variant_slides(),
+            *self.adam_slides(),
         ]
 
     def gradient_descent_slides(self) -> list[Slide]:
@@ -1187,85 +1165,77 @@ class IntroductionToOptimization:
             BulletSlide(
                 title="Gradient Descent: Core Idea",
                 section=Section.GRADIENT_METHODS,
-                text_area=Rectangle(left=6.4, top=1.7, width=6.5, height=4.5),
+                text_area=Rectangle(left=6.4, top=1.6, width=6.5, height=2.3),
                 font_size=18,
                 paragraphs=[
                     Paragraph(
-                        text="{b:Goal:} Minimize an {i:unconstrained} function {y:f(x)}.",
+                        text="{b:Goal:} minimize f without constraints.",
                         space_after=12,
                     ),
                     *Paragraph.bullet_points(
                         texts=[
-                            "The gradient {y:\u2207f(x)} points in the direction of "
-                            "{a:steepest ascent}.",
-                            Paragraph(
-                                text="The {a:negative} gradient points toward "
-                                "{i:steepest descent}.",
-                                level=BulletLevel.FIRST,
-                                space_after=14,
-                            ),
+                            "The {a:negative} gradient points downhill.",
+                            "So take a small step against the gradient, and repeat:",
                         ],
-                        space_after=4,
-                    ),
-                    Paragraph(
-                        text="Move a small step {i:against} the gradient:",
-                        space_after=10,
-                    ),
-                    self.formula(
-                        text="{y:x\u2096\u208a\u2081 = x\u2096 \u2212 \u03b1 "
-                        "\u2207f(x\u2096)}",
-                        space_after=14,
-                    ),
-                    Paragraph(
-                        text="where {y:\u03b1} is the {a:step size} or {a:learning "
-                        "rate}."
+                        space_after=6,
                     ),
                 ],
                 items=[
+                    self.display(
+                        latex=r"x_{k+1} = x_k - \alpha\, \nabla f(x_k)",
+                        top=3.95,
+                        left=6.4,
+                        width=6.5,
+                    ),
+                    self.text_box(
+                        area=Rectangle(left=6.4, top=4.75, width=6.5, height=1.4),
+                        paragraphs=[
+                            Paragraph(
+                                text="x{y:ₖ} is the point after k steps, α the "
+                                "{a:step size} or {a:learning rate}."
+                            )
+                        ],
+                    ),
                     self.video(
                         animation=Animation.GRADIENT_DESCENT_SURFACE,
                         position=Position(x=0.6, y=1.3),
                         width=4.9,
-                    )
+                    ),
                 ],
-                take_away="Gradient descent only needs {y:\u2207f} \u2013 no closed "
-                "form.",
+                take_away="Gradient descent only needs {y:∇}f – no closed form.",
             ),
-            BulletSlide(
+            ContentSlide(
                 title="Gradient Descent: Where Does the Update Come From?",
                 section=Section.GRADIENT_METHODS,
-                text_area=Rectangle(left=0.45, top=1.6, width=12.4, height=4.6),
-                font_size=18,
-                paragraphs=[
-                    self.heading(text="Local linear approximation:"),
-                    self.formula(
-                        text="{y:f(x + \u0394x) \u2248 f(x) + \u2207f(x)\u1d40\u0394x}",
-                        space_after=22,
+                items=[
+                    self.line(
+                        text="Near x, f is almost linear (first-order Taylor "
+                        "approximation):",
+                        top=1.5,
                     ),
-                    Paragraph(
-                        text="We want a step {y:\u0394x} of fixed length that makes "
-                        "{y:f(x + \u0394x)} as {a:small} as possible.",
-                        space_after=22,
+                    self.display(
+                        latex=r"f(x + \Delta x) \approx f(x) + \nabla f(x)^\top "
+                        r"\Delta x",
+                        top=2.05,
                     ),
-                    *Paragraph.bullet_points(
-                        texts=[
-                            "The inner product {y:\u2207f(x)\u1d40\u0394x} is smallest "
-                            "when {y:\u0394x} points opposite to {y:\u2207f(x)}:"
-                        ],
-                        space_after=14,
+                    self.line(
+                        text="For a step Δx of fixed length, the change "
+                        "{y:∇}f(x)ᵀΔx is most negative when Δx points "
+                        "opposite to the gradient:",
+                        top=2.95,
                     ),
-                    self.formula(text="{y:\u0394x = \u2212\u03b1\u2207f(x)}"),
+                    self.display(latex=r"\Delta x = -\alpha\, \nabla f(x)", top=3.6),
+                    TakeAway(text="−{y:∇}f is the direction of steepest descent."),
                 ],
-                take_away="{y:\u2212\u2207f} is the direction of steepest descent.",
             ),
             ContentSlide(
                 title="Choosing a Step Size (Learning Rate)",
                 section=Section.GRADIENT_METHODS,
                 items=[
-                    TextFrame(
+                    self.text_box(
                         area=Rectangle(left=0.45, top=1.3, width=12.4, height=1.3),
                         paragraphs=[
-                            self.heading(text="The learning rate {y:\u03b1} controls:"),
+                            self.heading(text="The learning rate α controls:"),
                             *Paragraph.bullet_points(
                                 texts=[
                                     "{a:How far} we move in the descent direction.",
@@ -1274,22 +1244,20 @@ class IntroductionToOptimization:
                                 space_after=4,
                             ),
                         ],
-                        font_size=17,
                     ),
-                    TextFrame(
+                    self.text_box(
                         area=Rectangle(left=3.2, top=2.75, width=3.8, height=1.3),
                         paragraphs=[
-                            self.heading(text="Small {y:\u03b1}:"),
+                            self.heading(text="Small α:"),
                             *Paragraph.bullet_points(
                                 texts=["Very stable", "Converges slowly"], space_after=4
                             ),
                         ],
-                        font_size=17,
                     ),
-                    TextFrame(
+                    self.text_box(
                         area=Rectangle(left=7.5, top=2.75, width=4.6, height=1.3),
                         paragraphs=[
-                            self.heading(text="Large {y:\u03b1}:"),
+                            self.heading(text="Large α:"),
                             *Paragraph.bullet_points(
                                 texts=[
                                     "Faster progress",
@@ -1298,17 +1266,16 @@ class IntroductionToOptimization:
                                 space_after=4,
                             ),
                         ],
-                        font_size=17,
                     ),
-                    TextFrame(
+                    self.text_box(
                         area=Rectangle(left=0.45, top=4.25, width=12.4, height=1.95),
                         paragraphs=[
                             self.heading(text="In practice:"),
                             *Paragraph.bullet_points(
                                 texts=[
-                                    "Constant {y:\u03b1} (simple)",
+                                    "Constant α (simple)",
                                     "Decreasing schedule",
-                                    "{a:Line search}: try steps along {y:\u2212\u2207f} "
+                                    "{a:Line search}: try steps along −{y:∇}f "
                                     "until the function decreases sufficiently",
                                 ],
                                 space_after=3,
@@ -1322,34 +1289,36 @@ class IntroductionToOptimization:
             BulletSlide(
                 title="Convergence Intuition",
                 section=Section.GRADIENT_METHODS,
-                text_area=Rectangle(left=6.4, top=2.0, width=6.5, height=4.2),
+                text_area=Rectangle(left=6.4, top=2.0, width=6.5, height=2.4),
                 font_size=18,
                 paragraphs=[
                     *Paragraph.bullet_points(
                         texts=[
-                            "Gradient is large far from the optimum {y:\u21d2} big "
-                            "steps.",
-                            "Gradient becomes small near the optimum {y:\u21d2} smaller "
-                            "steps.",
+                            "Far from the optimum the gradient is large: big steps.",
+                            "Near the optimum it is small: small steps.",
                             Paragraph(
-                                text="Steps point roughly toward the optimum.",
+                                text="Stop when the gradient is almost zero:",
                                 level=BulletLevel.FIRST,
-                                space_after=18,
+                                space_after=0,
                             ),
                         ],
-                        space_after=4,
+                        space_after=8,
                     ),
-                    self.heading(text="Stop when:"),
-                    self.formula(text="{y:\u2016\u2207f(x\u2096)\u2016 < \u03b5}"),
                 ],
                 items=[
+                    self.display(
+                        latex=r"\|\nabla f(x_k)\| < \varepsilon",
+                        top=4.5,
+                        left=6.4,
+                        width=6.5,
+                    ),
                     self.video(
                         animation=Animation.CONVERGENCE,
                         position=Position(x=1.0, y=1.75),
                         width=4.3,
-                    )
+                    ),
                 ],
-                take_away="With a fixed {y:\u03b1}, the steps shrink by themselves.",
+                take_away="With a fixed α, the steps shrink by themselves.",
             ),
             BulletSlide(
                 title="Common Problems in Gradient Descent",
@@ -1363,7 +1332,7 @@ class IntroductionToOptimization:
                             "1. Local minima and plateaus",
                             [
                                 "Non-convex: stuck in the nearest valley",
-                                "Gradient almost zero: progress stalls",
+                                "Almost flat: the gradient is tiny, progress stalls",
                             ],
                         ),
                         (
@@ -1396,135 +1365,174 @@ class IntroductionToOptimization:
 
     def gradient_descent_variant_slides(self) -> list[Slide]:
         """
-        :return: The slides on momentum, stochastic gradient descent and Adam.
+        :return: The slides on momentum and stochastic gradient descent.
         """
-        adam = self.adam
         return [
-            BulletSlide(
+            ContentSlide(
                 title="Momentum",
                 section=Section.GRADIENT_METHODS,
-                text_area=Rectangle(left=0.45, top=1.6, width=12.4, height=4.6),
-                font_size=18,
-                paragraphs=[
-                    Paragraph(
-                        text="{b:Problem:} Gradient descent zig-zags in narrow valleys.",
-                        space_after=10,
-                    ),
-                    *Paragraph.bullet_points(
-                        texts=[
-                            "Accumulate a moving average of past steps (a velocity).",
-                            "Directions that consistently decrease the objective build "
-                            "up speed.",
+                items=[
+                    self.text_box(
+                        area=Rectangle(left=0.45, top=1.5, width=12.4, height=2.3),
+                        paragraphs=[
                             Paragraph(
-                                text="Directions that flip sign cancel out.",
-                                level=BulletLevel.FIRST,
-                                space_after=22,
+                                text="{b:Problem:} gradient descent zig-zags in narrow "
+                                "valleys.",
+                                space_after=10,
+                            ),
+                            *Paragraph.bullet_points(
+                                texts=[
+                                    "Keep a {a:velocity} v: a running average of the "
+                                    "past steps.",
+                                    "Directions that keep going downhill build up "
+                                    "speed; directions that flip sign cancel out.",
+                                ],
+                                space_after=6,
                             ),
                         ],
-                        space_after=4,
                     ),
-                    self.formula(
-                        text="{y:v\u2096\u208a\u2081 = \u03b2v\u2096 \u2212 "
-                        "\u03b1\u2207f(x\u2096)}",
-                        space_after=4,
+                    self.display(
+                        latex=r"v_{k+1} = \beta\, v_k - \alpha\, \nabla f(x_k), "
+                        r"\qquad x_{k+1} = x_k + v_{k+1}",
+                        top=3.9,
                     ),
-                    self.formula(
-                        text="{y:x\u2096\u208a\u2081 = x\u2096 + v\u2096\u208a\u2081}",
-                        space_after=14,
+                    self.line(
+                        text="β {y:∈} [0, 1) says how much of the old velocity is "
+                        "kept; β = 0 is plain gradient descent.",
+                        top=4.75,
                     ),
-                    Paragraph(text="with {y:\u03b2 \u2208 [0, 1)}."),
+                    TakeAway(text="Momentum remembers where it was going."),
                 ],
-                take_away="Momentum remembers where it was going.",
             ),
-            BulletSlide(
+            ContentSlide(
                 title="Stochastic Gradient Descent (SGD)",
                 section=Section.GRADIENT_METHODS,
-                text_area=Rectangle(left=0.45, top=1.3, width=6.9, height=4.9),
-                font_size=16,
-                paragraphs=[
-                    Paragraph(
-                        text="Learning objectives are {a:averages over samples}:",
-                        space_after=6,
-                    ),
-                    self.formula(
-                        text="{y:f(\u03b8) = 1/N \u2211\u2c7c \u2113\u2c7c(\u03b8)}",
-                        font_size=18,
-                        space_after=6,
-                    ),
-                    *Paragraph.bullet_points(
-                        texts=[
-                            "One gradient of {y:f} costs {y:N} sample gradients.",
-                            "SGD draws a random {a:minibatch} {y:B} per step:",
-                        ],
-                        space_after=4,
-                    ),
-                    self.formula(
-                        text="{y:\u03b8 \u2190 \u03b8 \u2212 \u03b1 \u00b7 1/|B| "
-                        "\u2211\u2c7c\u2208B \u2207\u2113\u2c7c(\u03b8)}",
-                        font_size=18,
-                        space_after=6,
-                    ),
-                    *Paragraph.bullet_points(
-                        texts=[
-                            "The minibatch gradient is {a:unbiased}: its expectation "
-                            "is {y:\u2207f(\u03b8)}.",
-                            "Cheap but noisy steps; decrease {y:\u03b1} to settle.",
-                            "One pass through all samples is an {a:epoch}.",
-                        ],
-                        space_after=4,
-                    ),
-                ],
                 items=[
+                    self.text_box(
+                        area=Rectangle(left=0.45, top=1.3, width=6.9, height=0.75),
+                        paragraphs=[
+                            Paragraph(
+                                text="Learning objectives {a:average} a loss "
+                                "ℓ{y:ⱼ} over N samples j:",
+                                space_after=0,
+                            )
+                        ],
+                        font_size=16,
+                    ),
+                    self.display(
+                        latex=r"f(\theta) = \frac{1}{N} \sum_{j=1}^{N} \ell_j(\theta)",
+                        top=1.85,
+                        height=0.85,
+                        left=0.45,
+                        width=6.9,
+                    ),
+                    self.text_box(
+                        area=Rectangle(left=0.45, top=2.8, width=6.9, height=0.75),
+                        paragraphs=[
+                            Paragraph(
+                                text="One gradient of f costs N sample gradients. SGD "
+                                "uses a random {a:minibatch} B of samples per step:",
+                                space_after=0,
+                            )
+                        ],
+                        font_size=16,
+                    ),
+                    self.display(
+                        latex=r"\theta \leftarrow \theta - \alpha\, \frac{1}{|B|} "
+                        r"\sum_{j \in B} \nabla \ell_j(\theta)",
+                        top=3.6,
+                        height=0.85,
+                        left=0.45,
+                        width=6.9,
+                    ),
+                    self.text_box(
+                        area=Rectangle(left=0.45, top=4.55, width=6.9, height=1.65),
+                        paragraphs=Paragraph.bullet_points(
+                            texts=[
+                                "On average the minibatch gradient equals the full "
+                                "gradient.",
+                                "Cheap but noisy steps; decrease α to settle.",
+                                "One pass through all samples is an {a:epoch}.",
+                            ],
+                            space_after=4,
+                        ),
+                        font_size=16,
+                    ),
                     self.video(
                         animation=Animation.STOCHASTIC_GRADIENT_DESCENT,
                         position=Position(x=7.6, y=1.6),
                         width=5.3,
-                    )
+                    ),
+                    TakeAway(
+                        text="SGD never needs all data at once (→ Data-Intensive "
+                        "Systems, 26.11.)."
+                    ),
                 ],
-                take_away="SGD never needs all data at once ({y:\u2192} Data-Intensive "
-                "Systems, 26.11.).",
             ),
+        ]
+
+    def adam_slides(self) -> list[Slide]:
+        """
+        :return: The idea of Adam, then its update line by line.
+        """
+        adam = self.adam
+        update = [
+            (r"g_k = \nabla f(x_k)", "the gradient at the current point"),
+            (
+                r"m_k = \beta_1 m_{k-1} + (1 - \beta_1)\, g_k",
+                "average gradient: {a:where to go} (β₁ = "
+                f"{self.number(value=adam.first_moment_decay)}: about the last "
+                f"{round(1 / (1 - adam.first_moment_decay))} steps)",
+            ),
+            (
+                r"s_k = \beta_2 s_{k-1} + (1 - \beta_2)\, g_k^2",
+                "average squared gradient per coordinate: {a:how steep} it usually "
+                f"is (β₂ = {self.number(value=adam.second_moment_decay)})",
+            ),
+            (
+                r"\hat m_k = \frac{m_k}{1 - \beta_1^k}, \quad \hat s_k = "
+                r"\frac{s_k}{1 - \beta_2^k}",
+                "m and s start at 0, so early averages are too small; this corrects "
+                "them",
+            ),
+            (
+                r"x_{k+1} = x_k - \alpha\, \frac{\hat m_k}{\sqrt{\hat s_k} + "
+                r"\varepsilon}",
+                "step towards m̂, divided by the typical size √ŝ; "
+                "ε avoids dividing by zero",
+            ),
+        ]
+        row_top, row_height = 1.45, 0.92
+        return [
             BulletSlide(
-                title="Adam: Adaptive Step Sizes",
+                title="Adam: the Idea",
                 section=Section.GRADIENT_METHODS,
                 text_area=Rectangle(left=0.45, top=1.3, width=7.4, height=4.9),
                 font_size=16,
                 paragraphs=[
+                    self.heading(text="Problem:"),
                     Paragraph(
-                        text="Momentum plus a {a:step size per coordinate}, with "
-                        "{y:g\u2096 = \u2207f(x\u2096)}:",
-                        space_after=8,
+                        text="One step size α for all coordinates. In a narrow "
+                        "valley the gradient is large across and small along it: a "
+                        "step that is safe across is far too small along.",
+                        space_after=12,
                     ),
-                    self.formula(
-                        text="{y:m\u2096 = \u03b2\u2081m\u2096\u208b\u2081 + "
-                        "(1 \u2212 \u03b2\u2081)g\u2096}",
-                        font_size=17,
-                        space_after=2,
-                    ),
-                    self.formula(
-                        text="{y:s\u2096 = \u03b2\u2082s\u2096\u208b\u2081 + "
-                        "(1 \u2212 \u03b2\u2082)g\u2096\u00b2}",
-                        font_size=17,
-                        space_after=2,
-                    ),
-                    self.formula(
-                        text="{y:x\u2096\u208a\u2081 = x\u2096 \u2212 \u03b1 "
-                        "m\u0302\u2096 / (\u221as\u0302\u2096 + \u03b5)}",
-                        font_size=17,
-                        space_after=8,
-                    ),
+                    self.heading(text="Idea:"),
                     *Paragraph.bullet_points(
                         texts=[
-                            "{y:m\u0302, s\u0302}: {y:m, s} divided by "
-                            "{y:1 \u2212 \u03b2\u1d4f}, correcting the start at zero",
-                            "Defaults: {y:\u03b2\u2081 = "
-                            f"{self.number(value=adam.first_moment_decay)}, "
-                            f"\u03b2\u2082 = {self.number(value=adam.second_moment_decay)}"
-                            ", \u03b5 = 10\u207b\u2078}",
-                            "Steep coordinates get small steps, flat ones large steps",
-                            "Robust to noisy gradients; the defaults often work",
+                            "Average the recent gradients – like momentum – "
+                            "for a smooth {a:direction}.",
+                            "Also average the {i:squared} gradients: how large the "
+                            "gradient of each coordinate usually is.",
+                            "Divide each coordinate's step by that typical size: "
+                            "{a:steep coordinates get small steps, flat ones large "
+                            "steps}.",
                         ],
-                        space_after=4,
+                        space_after=8,
+                    ),
+                    Paragraph(
+                        text="Every coordinate then moves at a similar pace, about "
+                        "α per step.",
                     ),
                 ],
                 items=[
@@ -1536,6 +1544,43 @@ class IntroductionToOptimization:
                 ],
                 take_away="Adam is the default optimizer for neural networks.",
             ),
+            ContentSlide(
+                title="Adam: the Update, Line by Line",
+                section=Section.GRADIENT_METHODS,
+                items=[
+                    *[
+                        element
+                        for index, (latex, meaning) in enumerate(update)
+                        for element in [
+                            self.display(
+                                latex=latex,
+                                top=row_top + index * row_height,
+                                height=0.8,
+                                left=0.45,
+                                width=5.6,
+                                font_size=18,
+                                alignment=Alignment.LEFT,
+                            ),
+                            self.text_box(
+                                area=Rectangle(
+                                    left=6.3,
+                                    top=row_top + index * row_height + 0.1,
+                                    width=6.6,
+                                    height=0.75,
+                                ),
+                                paragraphs=[Paragraph(text=meaning, space_after=0)],
+                                font_size=15,
+                            ),
+                        ]
+                    ],
+                    TakeAway(
+                        text=f"Defaults α = {self.number(value=adam.learning_rate)}"
+                        f", β₁ = {self.number(value=adam.first_moment_decay)}"
+                        f", β₂ = {self.number(value=adam.second_moment_decay)}"
+                        ", ε = 10{y:⁻}⁸ often work without tuning."
+                    ),
+                ],
+            ),
         ]
 
     # %% computational graphs
@@ -1546,117 +1591,24 @@ class IntroductionToOptimization:
         """
         return [
             self.contents(highlighted_section=Section.COMPUTATIONAL_GRAPHS),
+            self.gradient_source_slide(),
             ContentSlide(
-                title="Where Do Gradients Come From?",
-                section=Section.COMPUTATIONAL_GRAPHS,
-                items=[
-                    *[
-                        self.text_box(
-                            area=Rectangle(
-                                left=0.45 + index * 4.2, top=1.5, width=3.9, height=4.6
-                            ),
-                            paragraphs=[
-                                self.heading(text=heading, space_after=8),
-                                *Paragraph.bullet_points(texts=points, space_after=6),
-                            ],
-                            font_size=16,
-                        )
-                        for index, (heading, points) in enumerate(
-                            [
-                                (
-                                    "By hand",
-                                    [
-                                        "Exact",
-                                        "Tedious and error-prone",
-                                        "Redone for every new model",
-                                    ],
-                                ),
-                                (
-                                    "Finite differences",
-                                    [
-                                        "{y:(f(x + h e\u1d62) \u2212 f(x)) / h}",
-                                        "{y:n + 1} evaluations of {y:f} for a gradient "
-                                        "in {y:\u211d\u207f}",
-                                        "Approximate: {y:h} trades truncation against "
-                                        "rounding error",
-                                    ],
-                                ),
-                                (
-                                    "Automatic differentiation",
-                                    [
-                                        "Exact up to floating point",
-                                        "Applies the chain rule to the program itself",
-                                        "Whole gradient for a few evaluations' cost",
-                                    ],
-                                ),
-                            ]
-                        )
-                    ],
-                    TakeAway(
-                        text="Every deep learning framework and Giskard rely on "
-                        "automatic differentiation."
-                    ),
-                ],
-            ),
-            BulletSlide(
                 title="Computational Graphs",
-                section=Section.COMPUTATIONAL_GRAPHS,
-                text_area=Rectangle(left=0.45, top=1.3, width=5.3, height=4.9),
-                font_size=16,
-                paragraphs=[
-                    Paragraph(
-                        text="A {a:computational graph} is a directed acyclic graph:",
-                        space_after=6,
-                    ),
-                    *Paragraph.bullet_points(
-                        texts=[
-                            "{b:nodes:} inputs and primitive operations "
-                            "({y:+, \u00b7, sin, exp}, \u2026)",
-                            "{b:edges:} the intermediate values passed on",
-                            Paragraph(
-                                text="Every program of primitive operations defines "
-                                "one; loops are unrolled.",
-                                level=BulletLevel.FIRST,
-                                space_after=14,
-                            ),
-                        ],
-                        space_after=6,
-                    ),
-                    self.heading(text="Example:"),
-                    self.formula(
-                        text="{y:f(a, b) = (a + b) \u00b7 b}",
-                        font_size=18,
-                        space_after=6,
-                    ),
-                    Paragraph(
-                        text="with {y:c = a + b}. The input {y:b} reaches {y:f} along "
-                        "{a:two paths}.",
-                    ),
-                ],
-                items=[
-                    self.video(
-                        animation=Animation.COMPUTATIONAL_GRAPH,
-                        position=Position(x=5.95, y=1.5),
-                        width=7.0,
-                    )
-                ],
-                take_away="The graph is the program, written so that it can be "
-                "differentiated.",
-            ),
-            self.backward_pass_slide(),
-            ContentSlide(
-                title="Forward Mode and Reverse Mode",
                 section=Section.COMPUTATIONAL_GRAPHS,
                 items=[
                     self.text_box(
-                        area=Rectangle(left=0.45, top=1.4, width=6.0, height=2.9),
+                        area=Rectangle(left=0.45, top=1.3, width=5.3, height=2.9),
                         paragraphs=[
-                            self.heading(text="Forward mode", space_after=6),
+                            Paragraph(
+                                text="A program, drawn as a graph:", space_after=6
+                            ),
                             *Paragraph.bullet_points(
                                 texts=[
-                                    "Carries a derivative along with every value, "
-                                    "from the inputs to the output",
-                                    "One pass per input direction",
+                                    "{b:nodes:} the inputs and every elementary "
+                                    "operation (+, ·, sin, exp, …)",
+                                    "{b:arrows:} which result is used where",
+                                    "Every program of elementary operations defines "
+                                    "one; loops are unrolled.",
                                 ],
                                 space_after=6,
                             ),
@@ -1664,7 +1616,61 @@ class IntroductionToOptimization:
                         font_size=16,
                     ),
                     self.text_box(
-                        area=Rectangle(left=6.9, top=1.4, width=6.0, height=2.9),
+                        area=Rectangle(left=0.45, top=4.2, width=5.3, height=0.4),
+                        paragraphs=[self.heading(text="Example:", space_after=0)],
+                        font_size=16,
+                    ),
+                    self.display(
+                        latex=r"f(a, b) = (a + b) \cdot b",
+                        top=4.6,
+                        height=0.55,
+                        left=0.45,
+                        width=5.3,
+                    ),
+                    self.text_box(
+                        area=Rectangle(left=0.45, top=5.2, width=5.3, height=1.0),
+                        paragraphs=[
+                            Paragraph(
+                                text="with c = a + b. The input b reaches f along "
+                                "{a:two paths}.",
+                                space_after=0,
+                            )
+                        ],
+                        font_size=16,
+                    ),
+                    self.video(
+                        animation=Animation.COMPUTATIONAL_GRAPH,
+                        position=Position(x=5.95, y=1.5),
+                        width=7.0,
+                    ),
+                    TakeAway(
+                        text="The graph is the program, written so that it can be "
+                        "differentiated."
+                    ),
+                ],
+            ),
+            self.backward_pass_slide(),
+            ContentSlide(
+                title="Forward Mode and Reverse Mode",
+                section=Section.COMPUTATIONAL_GRAPHS,
+                items=[
+                    self.text_box(
+                        area=Rectangle(left=0.45, top=1.4, width=6.0, height=2.4),
+                        paragraphs=[
+                            self.heading(text="Forward mode", space_after=6),
+                            *Paragraph.bullet_points(
+                                texts=[
+                                    "Carries a derivative along with every value, "
+                                    "from the inputs to the output",
+                                    "One pass per input",
+                                ],
+                                space_after=6,
+                            ),
+                        ],
+                        font_size=16,
+                    ),
+                    self.text_box(
+                        area=Rectangle(left=6.9, top=1.4, width=6.0, height=2.4),
                         paragraphs=[
                             self.heading(
                                 text="Reverse mode (backpropagation)", space_after=6
@@ -1681,17 +1687,15 @@ class IntroductionToOptimization:
                         font_size=16,
                     ),
                     self.text_box(
-                        area=Rectangle(left=0.45, top=4.3, width=12.4, height=1.9),
+                        area=Rectangle(left=0.45, top=4.0, width=12.4, height=2.2),
                         paragraphs=[
                             self.heading(text="Which one?", space_after=6),
                             *Paragraph.bullet_points(
                                 texts=[
-                                    "A loss {y:\u211d\u207f \u2192 \u211d} with millions "
-                                    "of parameters: {a:reverse mode} \u2013 the whole "
-                                    "gradient from one backward pass",
-                                    "A Jacobian {y:\u211d\u207f \u2192 \u211d\u1d50}: "
-                                    "forward mode if {y:n < m}, reverse mode if "
-                                    "{y:m < n}",
+                                    "A loss: millions of inputs (parameters), one "
+                                    "output → {a:reverse mode} gives the whole "
+                                    "gradient in one backward pass.",
+                                    "Few inputs, many outputs → forward mode.",
                                 ],
                                 space_after=6,
                             ),
@@ -1733,12 +1737,11 @@ class IntroductionToOptimization:
                         area=Rectangle(left=0.45, top=4.4, width=12.4, height=1.8),
                         paragraphs=Paragraph.bullet_points(
                             texts=[
-                                "Giskard writes the forward kinematics of the robot as "
-                                "an expression graph and differentiates it into the "
-                                "{a:Jacobians} its QP needs.",
-                                "PyTorch computes the {a:same numbers} as our backward "
-                                "pass by hand: {y:\u2202f/\u2202a = 3, \u2202f/\u2202b = "
-                                "8}.",
+                                "Giskard writes the robot's kinematics as an expression "
+                                "graph and differentiates it into the {a:Jacobians} its "
+                                "QP needs.",
+                                "PyTorch prints the {a:same numbers} as our backward "
+                                "pass by hand: 3 and 8.",
                             ],
                             space_after=6,
                         ),
@@ -1751,6 +1754,90 @@ class IntroductionToOptimization:
                 ],
             ),
         ]
+
+    def gradient_source_slide(self) -> Slide:
+        """
+        :return: Three ways to get a derivative, compared on :math:`f(x) = x^2` at 3.
+        """
+        point, step = 3.0, 0.001
+        exact = 2 * point
+        difference = ((point + step) ** 2 - point**2) / step
+        columns = [
+            (
+                "By hand",
+                rf"f'(x) = 2x \ \Rightarrow\ f'({point:g}) = {exact:g}",
+                [
+                    "Exact",
+                    "Derived again for every new model",
+                    "Tedious for millions of parameters",
+                ],
+            ),
+            (
+                "Finite differences",
+                rf"\frac{{f({point + step:g}) - f({point:g})}}{{{step:g}}} = "
+                rf"{difference:.4f}",
+                [
+                    "Nudge the input a little, see how f changes",
+                    "Only approximate",
+                    "n parameters: nudge each one separately – n + 1 runs of f "
+                    "per gradient",
+                ],
+            ),
+            (
+                "Automatic differentiation",
+                rf"x \cdot x \ \to\ 2x \ \Rightarrow\ {exact:g}",
+                [
+                    "Knows the derivative of every elementary operation and chains "
+                    "them",
+                    "Exact",
+                    "All n partial derivatives for the cost of a few runs of f",
+                ],
+            ),
+        ]
+        return ContentSlide(
+            title="Where Do Gradients Come From?",
+            section=Section.COMPUTATIONAL_GRAPHS,
+            items=[
+                self.line(
+                    text=f"Example: the slope of f(x) = x² at x = {point:g}, which "
+                    f"is exactly {exact:g}.",
+                    top=1.3,
+                ),
+                *[
+                    element
+                    for index, (heading, latex, points) in enumerate(columns)
+                    for element in [
+                        self.text_box(
+                            area=Rectangle(
+                                left=0.45 + index * 4.2, top=1.95, width=3.9, height=0.4
+                            ),
+                            paragraphs=[self.heading(text=heading, space_after=0)],
+                        ),
+                        self.display(
+                            latex=latex,
+                            top=2.4,
+                            height=0.85,
+                            left=0.45 + index * 4.2,
+                            width=3.9,
+                            font_size=17,
+                        ),
+                        self.text_box(
+                            area=Rectangle(
+                                left=0.45 + index * 4.2, top=3.4, width=3.9, height=2.8
+                            ),
+                            paragraphs=Paragraph.bullet_points(
+                                texts=points, space_after=6
+                            ),
+                            font_size=15,
+                        ),
+                    ]
+                ],
+                TakeAway(
+                    text="Automatic differentiation: exact gradients at the cost of a "
+                    "few function evaluations."
+                ),
+            ],
+        )
 
     def backward_pass_slide(self) -> Slide:
         """
@@ -1766,67 +1853,57 @@ class IntroductionToOptimization:
             title="The Backward Pass: Chain Rule on the Graph",
             section=Section.COMPUTATIONAL_GRAPHS,
             items=[
-                self.text_box(
-                    area=Rectangle(left=0.45, top=1.3, width=12.4, height=1.2),
-                    paragraphs=[
-                        Paragraph(
-                            text="The {a:adjoint} {y:v\u0304 = \u2202f/\u2202v} of a node "
-                            "sums what its consumers {y:u} send back:",
-                            space_after=6,
-                        ),
-                        self.formula(
-                            text="{y:f\u0304 = 1,      v\u0304 = \u2211\u1d64 "
-                            "u\u0304 \u00b7 \u2202u/\u2202v}",
-                            font_size=18,
-                            space_after=0,
-                        ),
-                    ],
+                self.line(
+                    text="The {a:adjoint} v̄ of a node is ∂f/∂v. Start "
+                    "with f̄ = 1 and sum what the consumers u of v send back:",
+                    top=1.3,
+                ),
+                self.display(
+                    latex=r"\bar v = \sum_{u \text{ uses } v} \bar u \, "
+                    r"\frac{\partial u}{\partial v}",
+                    top=1.8,
+                    height=0.85,
                 ),
                 Table(
-                    position=Position(x=0.9, y=2.75),
+                    position=Position(x=0.9, y=2.85),
                     column_widths=[2.4, 2.0, 3.4, 3.9],
                     rows=[
                         ["Node", "Forward value", "Local derivatives", "Adjoint"],
                         [
-                            "{y:f = c \u00b7 b}",
+                            "f = c · b",
                             value["f"],
-                            "{y:\u2202f/\u2202c = b,  \u2202f/\u2202b = c}",
-                            f"{{y:f\u0304 = {adjoint['f']}}}",
+                            "∂f/∂c = b,  ∂f/∂b = c",
+                            f"f̄ = {adjoint['f']}",
                         ],
                         [
-                            "{y:c = a + b}",
+                            "c = a + b",
                             value["c"],
-                            "{y:\u2202c/\u2202a = \u2202c/\u2202b = 1}",
-                            f"{{y:c\u0304 = f\u0304 \u00b7 b = {adjoint['c']}}}",
+                            "∂c/∂a = ∂c/∂b = 1",
+                            f"c̄ = f̄ · b = {adjoint['c']}",
                         ],
                         [
-                            "{y:b}",
+                            "b",
                             value["b"],
                             "",
-                            "{y:b\u0304 = f\u0304 \u00b7 c + c\u0304 \u00b7 1 = "
+                            "b̄ = f̄ · c + c̄ · 1 = "
                             f"{self.number(value=output.adjoint * total.value)} + "
-                            f"{adjoint['c']} = {adjoint['b']}}}",
+                            f"{adjoint['c']} = {adjoint['b']}",
                         ],
                         [
-                            "{y:a}",
+                            "a",
                             value["a"],
                             "",
-                            f"{{y:a\u0304 = c\u0304 \u00b7 1 = {adjoint['a']}}}",
+                            f"ā = c̄ · 1 = {adjoint['a']}",
                         ],
                     ],
-                    row_height=0.5,
+                    row_height=0.48,
                     font_size=15,
                 ),
-                self.text_box(
-                    area=Rectangle(left=0.45, top=5.4, width=12.4, height=0.8),
-                    paragraphs=[
-                        Paragraph(
-                            text="Check: {y:f = ab + b\u00b2}, so {y:\u2202f/\u2202a = b "
-                            f"= {value['b']}}} and {{y:\u2202f/\u2202b = a + 2b = "
-                            f"{self.number(value=first.value + 2 * second.value)}}}.",
-                            space_after=0,
-                        )
-                    ],
+                self.line(
+                    text="Check: f = ab + b², so ∂f/∂a = b = "
+                    f"{value['b']} and ∂f/∂b = a + 2b = "
+                    f"{self.number(value=first.value + 2 * second.value)}.",
+                    top=5.45,
                     font_size=16,
                 ),
                 TakeAway(text="Where a value branches, its adjoints add up."),
@@ -1853,96 +1930,96 @@ class IntroductionToOptimization:
         """
         robot = self.robot
         optimum = robot.linear_optimum
+        inequalities = [
+            self.latex_inequality(coefficients=row, bound=bound)
+            for row, bound in zip(robot.constraint_matrix, robot.constraint_bounds)
+            if bound > 0
+        ]
         return [
-            BulletSlide(
+            ContentSlide(
                 title="Linear Programs (LP)",
                 section=Section.CONSTRAINED,
-                text_area=Rectangle(left=0.45, top=1.3, width=12.4, height=4.9),
-                font_size=17,
-                paragraphs=[
-                    self.formula(
-                        text="{y:min c\u1d40x    s.t.    Gx \u2264 g,   Hx = h,   "
-                        "x \u2208 \u211d\u207f}",
-                        space_after=16,
+                items=[
+                    self.display(
+                        latex=r"\min_x\ c^\top x \quad \text{s.t.} \quad G x \le g, "
+                        r"\quad H x = h",
+                        top=1.35,
                     ),
-                    *Paragraph.bullet_points(
-                        texts=[
-                            "{b:Linear objective}: contour lines are straight.",
-                            "{b:Linear constraints}: the feasible region is a convex "
-                            "{a:polyhedron} \u2013 flat faces, edges, vertices.",
-                            "{b:Continuous variables}: integer variables make it a "
-                            "different, harder class (MILP).",
+                    self.text_box(
+                        area=Rectangle(left=0.45, top=2.2, width=12.4, height=4.0),
+                        paragraphs=[
+                            *Paragraph.bullet_points(
+                                texts=[
+                                    "{b:Linear objective}: its contour lines are "
+                                    "straight.",
+                                    "{b:Linear constraints}: the feasible region is a "
+                                    "convex {a:polyhedron} – flat faces, edges, "
+                                    "corners.",
+                                    "{b:Real-valued variables}: integer variables make "
+                                    "it a different, harder class.",
+                                ],
+                                space_after=8,
+                            ),
+                            Paragraph(text="", space_after=6),
+                            self.heading(text="Why LPs are “easy”:"),
+                            *Paragraph.bullet_points(
+                                texts=[
+                                    "If an optimum exists, one lies at a {a:corner} "
+                                    "(vertex) of the polyhedron.",
+                                    "Solvers walk from corner to corner ({a:simplex}) "
+                                    "or through the interior ({a:interior-point}).",
+                                ],
+                                space_after=6,
+                            ),
                         ],
-                        space_after=8,
                     ),
-                    Paragraph(text="", space_after=6),
-                    self.heading(text="Why LPs are \u201ceasy\u201d:"),
-                    *Paragraph.bullet_points(
-                        texts=[
-                            "If an optimum exists, one lies at a {a:vertex} of the "
-                            "polyhedron.",
-                            "Solvers walk from vertex to vertex ({a:simplex}) or "
-                            "through the interior ({a:interior-point}).",
-                        ],
-                        space_after=6,
+                    TakeAway(
+                        text="Linear objective, linear constraints: the optimum is at "
+                        "a corner."
                     ),
                 ],
-                take_away="Linear objective, linear constraints: the optimum is at a "
-                "corner.",
             ),
             ContentSlide(
                 title="Example: The Fastest Gripper",
                 section=Section.CONSTRAINED,
                 items=[
-                    self.text_box(
-                        area=Rectangle(left=0.45, top=1.3, width=12.4, height=0.5),
-                        paragraphs=[
-                            Paragraph(
-                                text="Ignore the motion cost for a moment: how fast "
-                                "can the gripper approach the cup?"
-                            )
-                        ],
+                    self.line(
+                        text="Ignore the motion cost for a moment: how fast can the "
+                        "gripper approach the cup?",
+                        top=1.3,
                         font_size=18,
                     ),
-                    TextFrame(
-                        area=Rectangle(left=0.45, top=2.0, width=5.0, height=0.45),
+                    self.text_box(
+                        area=Rectangle(left=0.45, top=1.95, width=5.0, height=0.45),
                         paragraphs=[self.heading(text="Inequality form")],
                         font_size=18,
                     ),
-                    *self.aligned_formulas(
-                        labels=["{y:max}", "{y:s.t.}"],
-                        expressions=[
-                            "{y:v = x\u2081 + x\u2082}",
-                            *[
-                                self.inequality_text(coefficients=row, bound=bound)
-                                for row, bound in zip(
-                                    robot.constraint_matrix, robot.constraint_bounds
-                                )
-                                if bound > 0
-                            ],
-                            "{y:x\u2081, x\u2082 \u2265 0}",
-                        ],
-                        position=Position(x=1.6, y=2.6),
-                        label_width=0.9,
-                        expression_width=3.6,
+                    self.display(
+                        latex=r"\begin{aligned} \max_x\ & x_1 + x_2 \\ \text{s.t.}\ "
+                        r"& "
+                        + r" \\ & ".join([*inequalities, r"x_1, x_2 \ge 0"])
+                        + r" \end{aligned}",
+                        top=2.5,
+                        height=2.6,
+                        left=0.45,
+                        width=4.6,
                     ),
-                    TextFrame(
-                        area=Rectangle(left=6.9, top=2.0, width=5.0, height=0.45),
+                    self.text_box(
+                        area=Rectangle(left=5.5, top=1.95, width=5.0, height=0.45),
                         paragraphs=[self.heading(text="Matrix form")],
                         font_size=18,
                     ),
-                    self.matrix_label(
-                        text="{y:max   J x,   J =}",
-                        area=Rectangle(left=6.9, top=2.6, width=2.6, height=0.4),
+                    self.display(
+                        latex=r"\begin{aligned} \max_x\ & J x, \quad J = "
+                        + self.latex_matrix(values=robot.gripper_jacobian[None, :])
+                        + r" \\ \text{s.t.}\ & "
+                        + self.robot_constraints_latex()
+                        + r" \end{aligned}",
+                        top=2.5,
+                        height=2.6,
+                        left=5.5,
+                        width=7.4,
                     ),
-                    Matrix(
-                        position=Position(x=9.6, y=2.6),
-                        entries=self.matrix_entries(
-                            values=robot.gripper_jacobian[None, :]
-                        ),
-                        column_width=0.45,
-                    ),
-                    *self.constraint_matrices(top=3.35),
                     TakeAway(
                         text="A linear program over the robot's feasible velocities."
                     ),
@@ -1957,8 +2034,8 @@ class IntroductionToOptimization:
                     self.heading(text="Optimal solution:"),
                     *Paragraph.bullet_points(
                         texts=[
-                            f"{{y:x* = {self.point_text(optimum=optimum)}}}",
-                            f"{{y:v* = {self.number(value=optimum.value)}}} cm/s",
+                            f"x* = {self.point_text(optimum=optimum)}",
+                            f"gripper speed {self.number(value=optimum.value)} cm/s",
                         ],
                         space_after=14,
                     ),
@@ -1998,10 +2075,10 @@ class IntroductionToOptimization:
                 paragraphs=[
                     *Paragraph.bullet_points(
                         texts=[
-                            "Slack variables turn inequalities into equalities: "
-                            "{y:Gx + s = g,  s \u2265 0}.",
-                            "A {a:basis} picks which variables may be non-zero; its "
-                            "solution is a {a:vertex}.",
+                            "Every corner is where some constraints are {a:active} "
+                            "(hold with equality).",
+                            "Start at a corner – for the robot, standing still at "
+                            "(0, 0).",
                         ],
                         space_after=8,
                     ),
@@ -2009,16 +2086,17 @@ class IntroductionToOptimization:
                     *[
                         Paragraph(text=step, indent=0.3, space_after=4)
                         for step in [
-                            "1. Does increasing a non-basic variable improve the "
-                            "objective (its {a:reduced cost})?",
-                            "2. If none does {y:\u2192} the vertex is optimal.",
-                            "3. Otherwise it enters the basis: move along that edge.",
-                            "4. The first variable that reaches zero leaves the basis.",
+                            "1. Look at the edges leaving the current corner.",
+                            "2. If none improves the objective → optimal.",
+                            "3. Otherwise follow an improving edge …",
+                            "4. … until the next constraint becomes active: a new "
+                            "corner.",
                         ]
                     ],
                     Paragraph(text="", space_after=4),
                     Paragraph(
-                        text="On the robot, starting from standing still {y:x = (0, 0)}.",
+                        text="Implementations do this with slack variables and a "
+                        "{a:tableau}.",
                     ),
                 ],
                 items=[
@@ -2034,15 +2112,10 @@ class IntroductionToOptimization:
                 title="Interior-Point Method (IPM)",
                 section=Section.CONSTRAINED,
                 items=[
-                    TextFrame(
-                        area=Rectangle(left=0.45, top=1.25, width=12.4, height=0.5),
-                        paragraphs=[
-                            Paragraph(
-                                text="{b:Key idea:} move {i:inside} the feasible region "
-                                "toward the optimum, instead of along the boundary."
-                            )
-                        ],
-                        font_size=17,
+                    self.line(
+                        text="{b:Key idea:} move {i:inside} the feasible region toward "
+                        "the optimum, instead of along the boundary.",
+                        top=1.25,
                     ),
                     self.video(
                         animation=Animation.INTERIOR_POINT,
@@ -2050,20 +2123,31 @@ class IntroductionToOptimization:
                         width=6.4,
                     ),
                     self.text_box(
-                        area=Rectangle(left=7.1, top=1.95, width=5.8, height=4.25),
+                        area=Rectangle(left=7.1, top=1.95, width=5.8, height=0.8),
+                        paragraphs=[
+                            Paragraph(
+                                text="Replace the constraints by a {a:barrier} that "
+                                "grows to +∞ at the boundary:",
+                                space_after=0,
+                            )
+                        ],
+                        font_size=16,
+                    ),
+                    self.display(
+                        latex=r"\min_x\ -t\, J x - \sum_i \log(g_i - G_i x)",
+                        top=2.8,
+                        height=0.75,
+                        left=7.1,
+                        width=5.8,
+                        font_size=18,
+                    ),
+                    self.text_box(
+                        area=Rectangle(left=7.1, top=3.7, width=5.8, height=2.5),
                         paragraphs=Paragraph.bullet_points(
                             texts=[
-                                "Replace the constraints by a {a:barrier} that grows to "
-                                "{y:+\u221e} at the boundary:",
-                                Paragraph(
-                                    text="{y:min \u2212t J x \u2212 \u2211\u1d62 "
-                                    "log(g\u1d62 \u2212 G\u1d62x)}",
-                                    alignment=Alignment.CENTER,
-                                    space_after=8,
-                                ),
                                 "An {b:unconstrained} problem: solve it with Newton "
                                 "steps.",
-                                "Increase {y:t}: the barrier weakens and the minimizers "
+                                "Increase t: the barrier weakens and the minimizers "
                                 "(the {a:central path}) approach the optimum.",
                             ],
                             space_after=8,
@@ -2080,7 +2164,7 @@ class IntroductionToOptimization:
                 section=Section.CONSTRAINED,
                 items=[
                     *[
-                        TextFrame(
+                        self.text_box(
                             area=Rectangle(left=left, top=top, width=6.0, height=2.0),
                             paragraphs=[
                                 self.heading(text=heading),
@@ -2096,7 +2180,7 @@ class IntroductionToOptimization:
                                 [
                                     "Walks along the edges of the polyhedron",
                                     "Fast on most problems, exponential worst case",
-                                    "Warm start from a previous basis",
+                                    "Warm start from a previous corner",
                                 ],
                             ),
                             (
@@ -2130,90 +2214,47 @@ class IntroductionToOptimization:
         """
         :return: The definition of quadratic programs and the robot's QP.
         """
-        quadratic_form_top = 2.25
         robot = self.robot
         optimum = robot.quadratic_optimum
         unconstrained = robot.unconstrained_minimum
         base_weight, arm_weight = robot.joint_weights
         elbow = robot.constraint_matrix[2]
+        eigenvalues = np.linalg.eigvalsh(robot.quadratic_cost_matrix)
         return [
             ContentSlide(
                 title="Quadratic Programs (QP)",
                 section=Section.CONSTRAINED,
                 items=[
-                    TextFrame(
-                        area=Rectangle(left=0.45, top=1.2, width=12.4, height=0.95),
-                        paragraphs=[
-                            Paragraph(
-                                text="A quadratic objective under linear constraints:",
-                                space_after=6,
-                            ),
-                            self.formula(
-                                text="{y:min \u00bd x\u1d40Qx + c\u1d40x    s.t.    "
-                                "Gx \u2264 g,  Hx = h,    x \u2208 \u211d\u207f}",
-                                font_size=17,
-                                space_after=0,
-                            ),
-                        ],
-                        font_size=16,
+                    self.line(
+                        text="A quadratic objective under linear constraints:", top=1.3
                     ),
-                    self.matrix_label(
-                        text="{y:x\u1d40Qx =}",
-                        area=Rectangle(
-                            left=2.0, top=quadratic_form_top, width=1.55, height=0.96
-                        ),
+                    self.display(
+                        latex=r"\min_x\ \tfrac{1}{2} x^\top Q x + c^\top x \quad "
+                        r"\text{s.t.} \quad G x \le g, \quad H x = h",
+                        top=1.8,
+                    ),
+                    self.display(
+                        latex=r"x^\top Q x = \begin{bmatrix} x_1 & \cdots & x_n "
+                        r"\end{bmatrix} \begin{bmatrix} Q_{11} & \cdots & Q_{1n} \\ "
+                        r"\vdots & \ddots & \vdots \\ Q_{n1} & \cdots & Q_{nn} "
+                        r"\end{bmatrix} \begin{bmatrix} x_1 \\ \vdots \\ x_n "
+                        r"\end{bmatrix} = \sum_{i=1}^{n} \sum_{j=1}^{n} Q_{ij}\, x_i "
+                        r"x_j",
+                        top=2.55,
+                        height=1.2,
                         font_size=17,
-                    ),
-                    Matrix(
-                        position=Position(x=3.65, y=quadratic_form_top + 0.32),
-                        entries=[["{y:x\u2081}", "{y:\u22ef}", "{y:x\u2099}"]],
-                        column_width=0.5,
-                    ),
-                    Matrix(
-                        position=Position(x=5.45, y=quadratic_form_top),
-                        entries=[
-                            ["{y:Q\u2081\u2081}", "{y:\u22ef}", "{y:Q\u2081\u2099}"],
-                            ["{y:\u22ee}", "{y:\u22f1}", "{y:\u22ee}"],
-                            ["{y:Q\u2099\u2081}", "{y:\u22ef}", "{y:Q\u2099\u2099}"],
-                        ],
-                        column_width=0.6,
-                    ),
-                    Matrix(
-                        position=Position(x=7.55, y=quadratic_form_top),
-                        entries=[["{y:x\u2081}"], ["{y:\u22ee}"], ["{y:x\u2099}"]],
-                        column_width=0.5,
-                    ),
-                    TextFrame(
-                        area=Rectangle(
-                            left=8.3, top=quadratic_form_top, width=4.5, height=0.96
-                        ),
-                        paragraphs=[
-                            Paragraph(
-                                text="{y:= \u2211\u1d62\u208c\u2081\u207f "
-                                "\u2211\u2c7c\u208c\u2081\u207f Q\u1d62\u2c7c x\u1d62 "
-                                "x\u2c7c}",
-                                space_after=0,
-                            )
-                        ],
-                        font_size=17,
-                        anchor=VerticalAnchor.MIDDLE,
                     ),
                     self.text_box(
-                        area=Rectangle(left=0.45, top=3.55, width=12.4, height=2.65),
+                        area=Rectangle(left=0.45, top=3.95, width=12.4, height=2.25),
                         paragraphs=Paragraph.bullet_points(
                             texts=[
-                                "Diagonal entries {y:Q\u1d62\u1d62} weigh the squares "
-                                "{y:x\u1d62\u00b2}, off-diagonal entries the cross terms "
-                                "{y:x\u1d62x\u2c7c}; the {y:\u00bd} cancels the 2 of "
-                                "the derivative.",
-                                "Convex if and only if {y:Q \u2ab0 0}.",
-                                "The feasible region is still a polyhedron, but the "
-                                "contours are {a:ellipses}:",
-                                Paragraph(
-                                    text="the optimum can lie on an edge or inside, not "
-                                    "only at a vertex.",
-                                    level=BulletLevel.SECOND,
-                                ),
+                                "Qᵢᵢ weighs the square xᵢ², "
+                                "Qᵢ{y:ⱼ} the product xᵢx{y:ⱼ}; the ½ "
+                                "cancels the 2 of the derivative.",
+                                "Convex exactly when all eigenvalues of Q are ≥ 0.",
+                                "The feasible region is a polyhedron as before, but the "
+                                "contours are {a:ellipses}: the optimum can lie on an "
+                                "edge or inside, not only at a corner.",
                             ],
                             space_after=6,
                         ),
@@ -2222,75 +2263,75 @@ class IntroductionToOptimization:
                     TakeAway(text="A QP is the next simplest problem after an LP."),
                 ],
             ),
-            BulletSlide(
+            ContentSlide(
                 title="The Robot's QP",
                 section=Section.CONSTRAINED,
-                text_area=Rectangle(left=0.45, top=1.3, width=12.4, height=4.9),
-                font_size=17,
-                paragraphs=[
-                    self.formula(
-                        text="{y:min  \u00bd (w\u2081x\u2081\u00b2 + w\u2082x\u2082\u00b2)"
-                        "  +  \u00bd w\u209b (x\u2081 + x\u2082 \u2212 v_d)\u00b2    "
-                        "s.t.    Gx \u2264 g}",
-                        space_after=14,
+                items=[
+                    self.display(
+                        latex=r"\min_x\ \underbrace{\tfrac{1}{2} (w_1 x_1^2 + w_2 "
+                        r"x_2^2)}_{\text{motion}} + \underbrace{\tfrac{1}{2} w_s (x_1 + "
+                        r"x_2 - v_d)^2}_{\text{goal}} \quad \text{s.t.} \quad G x \le g",
+                        top=1.35,
+                        height=0.95,
                     ),
-                    *Paragraph.bullet_points(
-                        texts=[
-                            "{b:Motion term:} small velocities; the base costs more "
-                            f"than the arm ({{y:w\u2081 = {self.number(value=base_weight)}"
-                            f", w\u2082 = {self.number(value=arm_weight)}}}).",
-                            "{b:Goal term:} a {a:soft constraint} \u2013 the gripper "
-                            "speed should be {y:v_d = "
-                            f"{self.number(value=robot.desired_gripper_speed)}}} cm/s, "
-                            "each deviation costs with weight {y:w\u209b = "
-                            f"{self.number(value=robot.goal_weight)}}}.",
-                            "Same as a {a:slack variable} {y:s}: minimize "
-                            "{y:\u2026 + \u00bd w\u209b s\u00b2} s.t. "
-                            "{y:x\u2081 + x\u2082 \u2212 s = v_d}.",
-                            "{b:Hard constraints} {y:Gx \u2264 g}: joint limits and "
-                            "collision avoidance, as for the LP.",
-                        ],
-                        space_after=8,
+                    self.text_box(
+                        area=Rectangle(left=0.45, top=2.5, width=12.4, height=3.7),
+                        paragraphs=Paragraph.bullet_points(
+                            texts=[
+                                "{b:Motion term:} prefer small velocities; the base "
+                                "costs more than the arm (w₁ = "
+                                f"{self.number(value=base_weight)}, w₂ = "
+                                f"{self.number(value=arm_weight)}).",
+                                "{b:Goal term:} a {a:soft constraint}. The gripper "
+                                "should move at v_d = "
+                                f"{self.number(value=robot.desired_gripper_speed)} "
+                                "cm/s; every cm/s off costs, with weight w{y:ₛ} = "
+                                f"{self.number(value=robot.goal_weight)}.",
+                                "Giskard writes this with a {a:slack variable} s = "
+                                "x₁ + x₂ − v_d and penalizes s².",
+                                "{b:Hard constraints} Gx ≤ g: joint limits and "
+                                "collision avoidance, as for the LP.",
+                            ],
+                            space_after=8,
+                        ),
+                    ),
+                    TakeAway(
+                        text="Hard constraints must hold; soft constraints are traded "
+                        "off in the objective."
                     ),
                 ],
-                take_away="Hard constraints must hold; soft constraints are traded off "
-                "in the objective.",
             ),
             ContentSlide(
                 title="The Robot's QP in Matrix Form",
                 section=Section.CONSTRAINED,
                 items=[
-                    self.matrix_label(
-                        text="{y:min  \u00bd x\u1d40Qx + c\u1d40x,   Q =}",
-                        area=Rectangle(left=0.45, top=1.6, width=3.6, height=0.64),
+                    self.display(
+                        latex=r"\begin{aligned} \min_x\ & \tfrac{1}{2} x^\top Q x + "
+                        r"c^\top x, \quad Q = "
+                        + self.latex_matrix(values=robot.quadratic_cost_matrix)
+                        + r", \quad c = "
+                        + self.latex_matrix(values=robot.linear_cost)
+                        + r" \\ \text{s.t.}\ & "
+                        + self.robot_constraints_latex()
+                        + r" \end{aligned}",
+                        top=1.35,
+                        height=2.8,
+                        font_size=18,
                     ),
-                    Matrix(
-                        position=Position(x=4.15, y=1.6),
-                        entries=self.matrix_entries(values=robot.quadratic_cost_matrix),
-                        column_width=0.6,
-                    ),
-                    self.matrix_label(
-                        text="{y:,   c =}",
-                        area=Rectangle(left=5.5, top=1.6, width=0.75, height=0.64),
-                    ),
-                    Matrix(
-                        position=Position(x=6.35, y=1.6),
-                        entries=self.matrix_entries(values=robot.linear_cost),
-                        column_width=0.75,
-                    ),
-                    *self.constraint_matrices(top=2.6, left=0.45),
                     self.text_box(
-                        area=Rectangle(left=7.0, top=2.6, width=5.9, height=3.6),
+                        area=Rectangle(left=0.45, top=4.3, width=12.4, height=1.9),
                         paragraphs=Paragraph.bullet_points(
                             texts=[
-                                "{y:Q = diag(w) + w\u209b J\u1d40J}",
-                                "{y:c = \u2212w\u209b v_d J\u1d40}",
-                                "The constant {y:\u00bd w\u209b v_d\u00b2} does not "
-                                "move the minimizer.",
-                                "Goal weight couples the joints: off-diagonal "
-                                "{y:w\u209b}.",
+                                "Expanding the objective gives Q = diag(w) + "
+                                "w{y:ₛ} JᵀJ and c = −w{y:ₛ} v_d Jᵀ.",
+                                "The goal couples the joints: the off-diagonal entries "
+                                "of Q.",
+                                "{b:Convex?} The eigenvalues of Q are "
+                                f"{self.number(value=eigenvalues[0])} and "
+                                f"{self.number(value=eigenvalues[1])}, both ≥ 0: "
+                                "yes.",
                             ],
-                            space_after=8,
+                            space_after=6,
                         ),
                         font_size=16,
                     ),
@@ -2308,28 +2349,28 @@ class IntroductionToOptimization:
                     self.heading(text="Optimal solution:"),
                     *Paragraph.bullet_points(
                         texts=[
-                            f"{{y:x* = {self.point_text(optimum=optimum)}}}",
-                            "gripper speed {y:"
-                            f"{self.number(value=sum(optimum.point))}}} cm/s",
+                            f"x* = {self.point_text(optimum=optimum)}",
+                            "gripper speed "
+                            f"{self.number(value=sum(optimum.point))} cm/s",
                         ],
                         space_after=12,
                     ),
                     self.heading(text="Without constraints:"),
                     *Paragraph.bullet_points(
                         texts=[
-                            f"{{y:x = {self.point_text(optimum=unconstrained)}}}",
-                            "elbow at {y:"
+                            f"x = {self.point_text(optimum=unconstrained)}",
+                            "elbow at "
                             + self.number(
                                 value=float(elbow @ np.array(unconstrained.point))
                             )
-                            + f" > {self.number(value=robot.constraint_bounds[2])}}} "
+                            + f" > {self.number(value=robot.constraint_bounds[2])} "
                             "cm/s: it would hit the shelf",
                         ],
                         space_after=12,
                     ),
                     Paragraph(
                         text="The optimum lies on the elbow's edge, {a:not at a "
-                        "vertex}."
+                        "corner}."
                     ),
                 ],
                 items=[
@@ -2357,86 +2398,93 @@ class IntroductionToOptimization:
         multipliers = robot.lagrange_multipliers(point=point)
         elbow_multiplier = multipliers[2]
         elbow = robot.constraint_matrix[2]
-        gradient_text = ", ".join(self.number(value=entry) for entry in gradient)
-        elbow_text = ", ".join(self.number(value=entry) for entry in elbow)
+        gradient_latex = self.latex_matrix(values=gradient)
+        elbow_latex = self.latex_matrix(values=elbow)
         return [
-            BulletSlide(
+            ContentSlide(
                 title="Karush-Kuhn-Tucker (KKT) Conditions",
                 section=Section.CONSTRAINED,
-                text_area=Rectangle(left=0.45, top=1.25, width=12.4, height=4.95),
-                font_size=16,
-                paragraphs=[
-                    Paragraph(
-                        text="At an optimum {y:x*} of {y:min f(x)  s.t.  g\u1d62(x) \u2264 "
-                        "0,  h\u2c7c(x) = 0} there are multipliers {y:\u03bb\u1d62, "
-                        "\u03bd\u2c7c} with:",
-                        space_after=10,
+                items=[
+                    self.line(
+                        text="At an optimum x* of a constrained problem there are "
+                        "numbers λᵢ, ν{y:ⱼ} (the {a:multipliers}) with:",
+                        top=1.3,
                     ),
-                    *[
-                        Paragraph(text=condition, indent=0.3, space_after=6)
-                        for condition in [
-                            "{b:Stationarity:}   {y:\u2207f(x*) + \u2211\u1d62 "
-                            "\u03bb\u1d62\u2207g\u1d62(x*) + \u2211\u2c7c "
-                            "\u03bd\u2c7c\u2207h\u2c7c(x*) = 0}",
-                            "{b:Primal feasibility:}   {y:g\u1d62(x*) \u2264 0,  "
-                            "h\u2c7c(x*) = 0}",
-                            "{b:Dual feasibility:}   {y:\u03bb\u1d62 \u2265 0}",
-                            "{b:Complementary slackness:}   {y:\u03bb\u1d62 "
-                            "g\u1d62(x*) = 0} \u2013 inactive constraints get "
-                            "{y:\u03bb\u1d62 = 0}",
-                        ]
-                    ],
-                    Paragraph(text="", space_after=4),
-                    *Paragraph.bullet_points(
-                        texts=[
-                            "Active constraints push back exactly as hard as the "
-                            "objective pulls.",
-                            "Without constraints: {y:\u2207f(x*) = 0}.",
-                            "For {a:convex} problems the conditions are also "
-                            "sufficient: a KKT point is a global optimum.",
-                        ],
-                        space_after=6,
+                    self.display(
+                        latex=r"\begin{aligned} & \text{stationarity:} && \nabla "
+                        r"f(x^*) + \textstyle\sum_i \lambda_i \nabla g_i(x^*) + "
+                        r"\sum_j \nu_j \nabla h_j(x^*) = 0 \\ & \text{feasibility:} && "
+                        r"g_i(x^*) \le 0, \quad h_j(x^*) = 0, \quad \lambda_i \ge 0 \\ "
+                        r"& \text{complementary slackness:} && \lambda_i\, g_i(x^*) = 0 "
+                        r"\end{aligned}",
+                        top=1.85,
+                        height=1.5,
+                        font_size=18,
                     ),
+                    self.text_box(
+                        area=Rectangle(left=0.45, top=3.55, width=12.4, height=2.65),
+                        paragraphs=Paragraph.bullet_points(
+                            texts=[
+                                "{b:In words:} the pull of the objective is balanced "
+                                "exactly by the push of the constraints it presses "
+                                "against.",
+                                "A constraint that is not touched (gᵢ < 0) pushes "
+                                "with λᵢ = 0.",
+                                "Constraints may only push, never pull: λᵢ ≥ 0.",
+                                "Without constraints this is just {y:∇}f(x*) = 0. For "
+                                "convex problems a point meeting these conditions is a "
+                                "global optimum.",
+                            ],
+                            space_after=6,
+                        ),
+                        font_size=16,
+                    ),
+                    TakeAway(text="KKT generalizes “gradient = 0” to constraints."),
                 ],
-                take_away="KKT generalizes {y:\u2207f = 0} to constraints.",
             ),
-            BulletSlide(
+            ContentSlide(
                 title="KKT at the Robot's Optimum",
                 section=Section.CONSTRAINED,
-                text_area=Rectangle(left=0.45, top=1.3, width=12.4, height=4.9),
-                font_size=17,
-                paragraphs=[
-                    Paragraph(
-                        text=f"At {{y:x* = {self.point_text(optimum=optimum)}}} the "
-                        "elbow constraint is active, all others are not.",
-                        space_after=12,
+                items=[
+                    self.line(
+                        text=f"At x* = {self.point_text(optimum=optimum)} only the "
+                        "elbow constraint is active. Its gradient and that of the cost:",
+                        top=1.3,
                     ),
-                    *Paragraph.bullet_points(
-                        texts=[
-                            "Cost gradient: {y:\u2207f(x*) = Qx* + c = "
-                            f"({gradient_text})}}",
-                            f"Elbow gradient: {{y:\u2207g(x*) = ({elbow_text})}}",
-                            "Stationarity: {y:"
-                            f"({gradient_text}) + \u03bb ({elbow_text}) = 0  "
-                            f"\u21d2  \u03bb = {self.number(value=elbow_multiplier)} "
-                            "\u2265 0  \u2713}",
+                    self.display(
+                        latex=rf"\nabla f(x^*) = Q x^* + c = {gradient_latex}, \qquad "
+                        rf"\nabla g_{{\text{{elbow}}}} = {elbow_latex}",
+                        top=1.85,
+                        height=0.95,
+                    ),
+                    self.line(text="Stationarity:", top=2.95),
+                    self.display(
+                        latex=rf"{gradient_latex} + \lambda {elbow_latex} = 0 \quad "
+                        rf"\Longrightarrow \quad \lambda = "
+                        rf"{self.latex_number(value=elbow_multiplier)} \ge 0",
+                        top=3.35,
+                        height=0.95,
+                    ),
+                    self.text_box(
+                        area=Rectangle(left=0.45, top=4.45, width=12.4, height=1.75),
+                        paragraphs=[
                             Paragraph(
-                                text="All inactive constraints: {y:\u03bb\u1d62 = 0  "
-                                "\u2713}",
-                                level=BulletLevel.FIRST,
-                                space_after=18,
+                                text="All other constraints are inactive and get "
+                                "λ = 0. All conditions hold: x* is optimal.",
+                                space_after=10,
+                            ),
+                            Paragraph(
+                                text="{b:Meaning:} λ is a {a:shadow price} – "
+                                "allowing the elbow 1 cm/s more lowers the optimal cost "
+                                f"by about {self.number(value=elbow_multiplier)}.",
+                                space_after=0,
                             ),
                         ],
-                        space_after=8,
                     ),
-                    self.heading(text="Meaning of the multiplier:"),
-                    Paragraph(
-                        text="{y:\u03bb} is a {a:shadow price}: allowing the elbow 1 "
-                        "cm/s more lowers the optimal cost by about "
-                        f"{self.number(value=elbow_multiplier)}."
+                    TakeAway(
+                        text="The multipliers tell the robot what each constraint costs."
                     ),
                 ],
-                take_away="The multipliers tell the robot what each constraint costs.",
             ),
             BulletSlide(
                 title="Active Set Method",
@@ -2451,13 +2499,11 @@ class IntroductionToOptimization:
                     ),
                     *Paragraph.bullet_points(
                         texts=[
-                            "A solution violates an inactive constraint {y:\u2192} add "
-                            "it to the active set.",
-                            "An active constraint has {y:\u03bb\u1d62 < 0} {y:\u2192} "
-                            "remove it.",
+                            "The solution violates another constraint → add it "
+                            "to the guess.",
+                            "An active constraint pulls (λᵢ < 0) → remove it.",
                             Paragraph(
-                                text="Feasible and all {y:\u03bb\u1d62 \u2265 0} "
-                                "{y:\u2192} KKT holds: optimal.",
+                                text="Feasible and all λᵢ ≥ 0 → KKT holds: optimal.",
                                 level=BulletLevel.FIRST,
                                 space_after=14,
                             ),
@@ -2468,19 +2514,20 @@ class IntroductionToOptimization:
                     *[
                         Paragraph(text=step, indent=0.3, space_after=5)
                         for step in [
-                            "1. {y:A = \u2205}: unconstrained minimum {y:"
-                            f"{self.point_text(optimum=unconstrained)}}} violates "
-                            "the elbow constraint.",
-                            "2. {y:A = }{elbow}: minimum on the elbow's line "
-                            f"{{y:{self.point_text(optimum=optimum)}}}, feasible, "
-                            f"{{y:\u03bb = {self.number(value=elbow_multiplier)} "
-                            "\u2265 0}: optimal.",
+                            "1. No constraint active: the minimum "
+                            f"{self.point_text(optimum=unconstrained)} violates the "
+                            "elbow constraint.",
+                            "2. Elbow active: the minimum on the elbow's line is "
+                            f"{self.point_text(optimum=optimum)}, feasible, with "
+                            f"λ = {self.number(value=elbow_multiplier)} ≥ 0: "
+                            "optimal.",
                         ]
                     ],
                     Paragraph(text="", space_after=4),
                     Paragraph(
-                        text="In a control loop the active set barely changes from one "
-                        "cycle to the next: a {a:warm start} makes each solve fast."
+                        text="In a control loop the active constraints barely change "
+                        "from one cycle to the next: a {a:warm start} makes each solve "
+                        "fast."
                     ),
                 ],
                 take_away="Solving a QP: guessing the active constraints, checked by "
@@ -2499,7 +2546,7 @@ class IntroductionToOptimization:
                     ),
                     *Paragraph.bullet_points(
                         texts=[
-                            "{b:Variables:} velocities of all joints \u2013 and their "
+                            "{b:Variables:} velocities of all joints – and their "
                             "accelerations and jerks over a short prediction horizon",
                             "{b:Soft constraints:} one slack per goal; their weights "
                             "decide which goal gives way first",
@@ -2526,7 +2573,7 @@ class IntroductionToOptimization:
                         font_size=12,
                     ),
                 ],
-                take_away="Convex, so its optimum is unique \u2013 and fast enough to "
+                take_away="Convex, so its optimum is unique – and fast enough to "
                 "find many times per second.",
             ),
         ]
@@ -2540,59 +2587,62 @@ class IntroductionToOptimization:
         estimate = self.grasps.maximum_likelihood_estimate
         return [
             self.contents(highlighted_section=Section.LIKELIHOOD),
-            BulletSlide(
+            ContentSlide(
                 title="Fitting a Model Is Maximizing a Likelihood",
                 section=Section.LIKELIHOOD,
-                text_area=Rectangle(left=0.45, top=1.3, width=12.4, height=4.9),
-                font_size=17,
-                paragraphs=[
-                    Paragraph(
-                        text="Model: {y:y = \u03b8\u1d40x + \u03b5} with Gaussian noise "
-                        "{y:\u03b5 ~ N(0, \u03c3\u00b2)}, samples {y:(x\u2c7c, "
-                        "y\u2c7c)}.",
-                        space_after=10,
+                items=[
+                    self.line(
+                        text="Model: y = θᵀx + noise, the noise Gaussian with "
+                        "spread σ. Data: N samples (x{y:ⱼ}, y{y:ⱼ}).",
+                        top=1.3,
                     ),
-                    self.heading(text="Likelihood of the parameters:"),
-                    self.formula(
-                        text="{y:L(\u03b8) = \u220f\u2c7c p(y\u2c7c | x\u2c7c, \u03b8)}",
-                        font_size=18,
-                        space_after=8,
+                    self.line(
+                        text="The {a:likelihood}: how probable the data is for "
+                        "parameters θ.",
+                        top=1.85,
                     ),
-                    self.heading(text="Negative log-likelihood:"),
-                    self.formula(
-                        text="{y:\u2212log L(\u03b8) = 1/(2\u03c3\u00b2) \u2211\u2c7c "
-                        "(y\u2c7c \u2212 \u03b8\u1d40x\u2c7c)\u00b2 + "
-                        "N log(\u03c3\u221a(2\u03c0))}",
-                        font_size=18,
-                        space_after=10,
+                    self.display(
+                        latex=r"L(\theta) = \prod_{j=1}^{N} p(y_j \mid x_j, \theta)",
+                        top=2.3,
+                        height=0.85,
                     ),
-                    *Paragraph.bullet_points(
-                        texts=[
-                            "Maximizing the likelihood {y:=} minimizing the squared "
-                            "error: {a:least squares}.",
-                            "The logarithm keeps the maximizer and turns the product "
-                            "into a {a:sum over samples} \u2013 ready for SGD.",
-                        ],
-                        space_after=6,
+                    self.line(
+                        text="Its negative logarithm, for Gaussian noise:", top=3.25
+                    ),
+                    self.display(
+                        latex=r"-\log L(\theta) = \frac{1}{2\sigma^2} \sum_{j=1}^{N} "
+                        r"(y_j - \theta^\top x_j)^2 + N \log(\sigma \sqrt{2\pi})",
+                        top=3.7,
+                        height=0.85,
+                    ),
+                    self.text_box(
+                        area=Rectangle(left=0.45, top=4.7, width=12.4, height=1.5),
+                        paragraphs=Paragraph.bullet_points(
+                            texts=[
+                                "Maximizing the likelihood = minimizing the squared "
+                                "error: {a:least squares}.",
+                                "The logarithm keeps the maximizer and turns the "
+                                "product into a {a:sum over samples} – ready for "
+                                "SGD.",
+                            ],
+                            space_after=6,
+                        ),
+                    ),
+                    TakeAway(
+                        text="Learning is optimizing the likelihood (→ "
+                        "Uncertainty, 03.12.)."
                     ),
                 ],
-                take_away="Learning is optimizing the likelihood ({y:\u2192} "
-                "Uncertainty, 03.12.).",
             ),
             ContentSlide(
                 title="Maximum Likelihood under a Constraint",
                 section=Section.LIKELIHOOD,
                 items=[
-                    self.text_box(
-                        area=Rectangle(left=0.45, top=1.3, width=12.4, height=0.8),
-                        paragraphs=[
-                            Paragraph(
-                                text="The robot logged "
-                                f"{self.grasps.attempt_count} grasps in its episodic "
-                                "memory (NEEMs, lecture 02). How likely is each "
-                                "outcome?"
-                            )
-                        ],
+                    self.line(
+                        text=f"The robot logged {self.grasps.attempt_count} grasps in "
+                        "its episodic memory (NEEMs, lecture 02). How likely is each "
+                        "outcome?",
+                        top=1.3,
                     ),
                     Table(
                         position=Position(x=0.6, y=2.2),
@@ -2602,8 +2652,8 @@ class IntroductionToOptimization:
                             *[
                                 [
                                     outcome.value,
-                                    f"{{y:n = {count}}}",
-                                    f"{{y:p = {estimate[outcome]:.2f}}}",
+                                    f"n = {count}",
+                                    f"p = {estimate[outcome]:.2f}",
                                 ]
                                 for outcome, count in self.grasps.counts.items()
                             ],
@@ -2611,29 +2661,46 @@ class IntroductionToOptimization:
                         row_height=0.48,
                         font_size=15,
                     ),
+                    self.display(
+                        latex=r"\max_p\ \sum_k n_k \log p_k \quad \text{s.t.} \quad "
+                        r"\sum_k p_k = 1",
+                        top=2.1,
+                        height=0.85,
+                        left=5.7,
+                        width=7.2,
+                        font_size=18,
+                    ),
                     self.text_box(
-                        area=Rectangle(left=5.7, top=2.1, width=7.2, height=4.1),
+                        area=Rectangle(left=5.7, top=3.05, width=7.2, height=0.8),
                         paragraphs=[
-                            self.formula(
-                                text="{y:max\u209a \u2211\u2096 n\u2096 log p\u2096    "
-                                "s.t.    \u2211\u2096 p\u2096 = 1}",
-                                font_size=18,
-                                space_after=10,
-                            ),
-                            *Paragraph.bullet_points(
-                                texts=[
-                                    "Concave objective, linear constraint: a convex "
-                                    "problem.",
-                                    "Stationarity with multiplier {y:\u03bd}: "
-                                    "{y:n\u2096 / p\u2096 = \u03bd}",
-                                    "With {y:\u2211\u2096 p\u2096 = 1}: {y:\u03bd = N}, "
-                                    "so {y:p\u2096 = n\u2096 / N}",
-                                    "The relative frequencies \u2013 what the solver "
-                                    "returns, too.",
-                                ],
-                                space_after=8,
-                            ),
+                            Paragraph(
+                                text="Stationarity with a multiplier ν for the "
+                                "equality constraint:",
+                                space_after=0,
+                            )
                         ],
+                        font_size=16,
+                    ),
+                    self.display(
+                        latex=r"\frac{n_k}{p_k} = \nu \quad \Longrightarrow \quad "
+                        r"\nu = N, \quad p_k = \frac{n_k}{N}",
+                        top=3.8,
+                        height=0.85,
+                        left=5.7,
+                        width=7.2,
+                        font_size=18,
+                    ),
+                    self.text_box(
+                        area=Rectangle(left=5.7, top=4.8, width=7.2, height=1.4),
+                        paragraphs=Paragraph.bullet_points(
+                            texts=[
+                                "Concave objective, linear constraint: a convex "
+                                "problem.",
+                                "The estimate is the relative frequency – the "
+                                "numerical solver agrees.",
+                            ],
+                            space_after=6,
+                        ),
                         font_size=16,
                     ),
                     TakeAway(
@@ -2655,12 +2722,12 @@ class IntroductionToOptimization:
                                 "An optimization problem: objective, decision "
                                 "variables, constraints.",
                                 "Convex problems: every local minimum is global.",
-                                "Gradient descent follows {y:\u2212\u2207f}; momentum, "
+                                "Gradient descent follows −{y:∇}f; momentum, "
                                 "SGD and Adam make it fast and scalable.",
                                 "Computational graphs give exact gradients: the "
                                 "backward pass is the chain rule.",
-                                "LPs have their optimum at a vertex; QPs on an edge, a "
-                                "vertex or inside.",
+                                "LPs have their optimum at a corner; QPs on an edge, a "
+                                "corner or inside.",
                                 "KKT: active constraints balance the gradient; the "
                                 "multipliers price the constraints.",
                                 "Giskard moves the robot by solving a convex QP every "
@@ -2670,9 +2737,7 @@ class IntroductionToOptimization:
                         )
                     ],
                     Paragraph(text="", space_after=6),
-                    Paragraph(
-                        text="{s:Next week:} Data-Intensive Systems",
-                    ),
+                    Paragraph(text="{s:Next week:} Data-Intensive Systems"),
                 ],
             ),
             BulletSlide(

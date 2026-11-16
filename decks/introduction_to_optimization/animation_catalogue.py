@@ -121,6 +121,11 @@ class Animation(StrEnum):
     The cost contours of the velocity QP growing until they touch the feasible region.
     """
 
+    CONVEX_SET = "convex_set"
+    """
+    A segment inside a convex set and leaving a non-convex one.
+    """
+
     CONVEXITY = "convexity"
     """
     A chord above a convex function and below a non-convex one.

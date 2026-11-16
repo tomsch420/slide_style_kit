@@ -1,18 +1,20 @@
 """
-The elements a slide is made of: text frames, pictures, videos, boxes, arrows and
-tables.
+The elements a slide is made of: text frames, pictures, videos, formulas, boxes, arrows
+and tables.
 """
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from functools import cached_property
 from pathlib import Path
 
 from PIL import Image
 from typing_extensions import TYPE_CHECKING
 
 from slide_style_kit.exceptions import UnsizedPicture
+from slide_style_kit.formulas import FormulaTypesetter, TypesetFormula
 from slide_style_kit.geometry import Position, Rectangle, Size
 from slide_style_kit.markup import Markup
 from slide_style_kit.style import (
@@ -252,6 +254,78 @@ class Video(Picture):
 
 
 # %% shapes
+
+
+@dataclass(kw_only=True)
+class Formula(Element):
+    """
+    A formula typeset with LaTeX, scaled to its font size and placed in an area.
+    """
+
+    latex: str
+    """
+    The formula as LaTeX math, without dollar signs.
+    """
+
+    area: Rectangle
+    """
+    The area the formula is aligned in; a formula too large for it is scaled down.
+    """
+
+    font_size: float = 20
+    """
+    The font size the formula is set at, in points.
+    """
+
+    color: Color = Color.BLACK
+    """
+    The colour of the formula.
+    """
+
+    alignment: Alignment = Alignment.CENTER
+    """
+    The horizontal alignment in :attr:`area`; vertically, the formula is centred.
+    """
+
+    typesetter: FormulaTypesetter = field(default_factory=FormulaTypesetter)
+    """
+    The typesetter that renders the formula.
+    """
+
+    @cached_property
+    def typeset_formula(self) -> TypesetFormula:
+        """
+        The formula rendered to image files.
+        """
+        return self.typesetter.typeset(latex=self.latex, color=self.color)
+
+    def displayed_area(self) -> Rectangle:
+        """
+        :return: The area the formula is drawn in.
+        """
+        natural_size = self.typeset_formula.natural_size
+        scale = min(
+            self.font_size / TypesetFormula.natural_font_size,
+            self.area.width / natural_size.width,
+            self.area.height / natural_size.height,
+        )
+        width, height = natural_size.width * scale, natural_size.height * scale
+        match self.alignment:
+            case Alignment.LEFT:
+                left = self.area.left
+            case Alignment.CENTER:
+                left = self.area.left + (self.area.width - width) / 2
+            case Alignment.RIGHT:
+                left = self.area.left + self.area.width - width
+        return Rectangle(
+            left=left,
+            top=self.area.top + (self.area.height - height) / 2,
+            width=width,
+            height=height,
+        )
+
+    def draw(self, *, renderer: Renderer) -> None:
+        renderer.draw_formula(formula=self)
 
 
 @dataclass(kw_only=True)

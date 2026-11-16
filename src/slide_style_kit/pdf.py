@@ -11,11 +11,13 @@ from functools import cached_property
 from urllib.request import pathname2url
 from xml.sax.saxutils import escape
 
+from reportlab.graphics import renderPDF
 from reportlab.lib.colors import HexColor
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.pdfgen.canvas import Canvas
 from reportlab.platypus import Paragraph as ReportLabParagraph
+from svglib.svglib import svg2rlg
 from typing_extensions import TYPE_CHECKING
 
 from krrood.ormatic.utils import classproperty
@@ -36,6 +38,7 @@ if TYPE_CHECKING:
     from slide_style_kit.elements import (
         Arrow,
         Box,
+        Formula,
         Paragraph,
         Picture,
         Table,
@@ -331,6 +334,18 @@ class PDFRenderer(Renderer):
             Length(inches=size.width).points,
             Length(inches=size.height).points,
             mask="auto",
+        )
+
+    def draw_formula(self, *, formula: Formula) -> None:
+        area = formula.displayed_area()
+        drawing = svg2rlg(str(formula.typeset_formula.vector_image))
+        scale = Length(inches=area.width).points / drawing.width
+        drawing.scale(scale, scale)
+        renderPDF.draw(
+            drawing,
+            self.canvas,
+            Length(inches=area.left).points,
+            self.distance_from_bottom(top=area.bottom),
         )
 
     def draw_video(self, *, video: Video) -> None:

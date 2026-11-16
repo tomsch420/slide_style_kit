@@ -1062,7 +1062,10 @@ class GradientDescentProblemsScene(PlotMixin, Scene):
         self.play(progress.animate.set_value(60), run_time=6, rate_func=linear)
         for iterates, name in runs:
             final = iterates[-1]
-            label = self.note(text=f"stuck: {name}").set_color(PlotColor.ALERT.value)
+            slope = abs(function.derivative(x=final))
+            label = self.note(
+                text=f"stuck: {name}\n|f\u2032(x)| = {slope:.3f}", font_size=22
+            ).set_color(PlotColor.ALERT.value)
             label.next_to(
                 axes.c2p(final, float(function.evaluate(x=np.array(final)))),
                 UP,
@@ -1301,6 +1304,94 @@ class ConvexityScene(PlotMixin, Scene):
             Line(*ends, color=PlotColor.PATH.value, stroke_width=4),
             *[Dot(end, color=PlotColor.PATH.value, radius=0.08) for end in ends],
         )
+
+
+class ConvexSetScene(PlotMixin, Scene):
+    """
+    The segment between two points of a convex set stays inside it as the points move;
+    in a non-convex set it leaves the set.
+    """
+
+    def construct(self) -> None:
+        """
+        Unlike :meth:`manim.Scene.construct`, play the animation the class describes.
+        """
+        panel_size = min(config.frame_width / 2 - 1.2, config.frame_height - 2.2)
+        robot = VelocityControlProblem()
+        robot_vertices = robot.feasible_vertices / robot.feasible_vertices.max(axis=0)
+        shapes = [
+            (
+                "convex",
+                robot_vertices,
+                ((0.15, 0.1), (0.8, 0.3)),
+                ((0.1, 0.9), (0.9, 0.1)),
+            ),
+            (
+                "not convex",
+                np.array(
+                    [[0, 0], [1, 0], [1, 0.4], [0.4, 0.4], [0.4, 1], [0, 1]],
+                    dtype=float,
+                ),
+                ((0.2, 0.15), (0.8, 0.2)),
+                ((0.2, 0.85), (0.85, 0.25)),
+            ),
+        ]
+        for column, (title, vertices, start, end) in enumerate(shapes):
+            center = (column - 0.5) * config.frame_width / 2 * RIGHT + 0.3 * DOWN
+            corner = center - panel_size / 2 * (RIGHT + UP)
+
+            def place(point: np.ndarray, corner: np.ndarray = corner) -> np.ndarray:
+                """
+                :return: The scene position of *point* in the unit square of the panel.
+                """
+                return corner + panel_size * (point[0] * RIGHT + point[1] * UP)
+
+            region = Polygon(
+                *[place(vertex) for vertex in vertices],
+                fill_color=PlotColor.FEASIBLE.manim_color,
+                fill_opacity=0.9,
+                stroke_color=PlotColor.STRUCTURE.manim_color,
+                stroke_width=3,
+            )
+            heading = self.note(text=title, font_size=30).next_to(region, UP, buff=0.3)
+            self.play(FadeIn(region), FadeIn(heading), run_time=1)
+            first = [ValueTracker(value) for value in start[0]]
+            second = [ValueTracker(value) for value in start[1]]
+            segment = always_redraw(
+                lambda first=first, second=second, place=place: VGroup(
+                    Line(
+                        place(np.array([tracker.get_value() for tracker in first])),
+                        place(np.array([tracker.get_value() for tracker in second])),
+                        color=PlotColor.PATH.value,
+                        stroke_width=4,
+                    ),
+                    *[
+                        Dot(
+                            place(np.array([tracker.get_value() for tracker in end])),
+                            color=PlotColor.INK.value,
+                            radius=0.08,
+                        )
+                        for end in (first, second)
+                    ],
+                )
+            )
+            self.play(FadeIn(segment))
+            self.play(
+                *[
+                    tracker.animate.set_value(value)
+                    for trackers, targets in ((first, end[0]), (second, end[1]))
+                    for tracker, value in zip(trackers, targets)
+                ],
+                run_time=2.5,
+            )
+            if column == 1:
+                warning = (
+                    self.note(text="segment leaves the set", font_size=24)
+                    .set_color(PlotColor.ALERT.value)
+                    .move_to(place(np.array([0.72, 0.9])))
+                )
+                self.play(FadeIn(warning))
+        self.wait(2)
 
 
 # %% stochastic gradient descent

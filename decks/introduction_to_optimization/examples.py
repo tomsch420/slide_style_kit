@@ -467,12 +467,17 @@ class BumpyLandscape(OneVariableFunction):
     A shallow local minimum, a deep global minimum and an almost flat plateau.
     """
 
+    plateau_slope: float = 0.003
+    """
+    The slope of the plateau, small enough that gradient descent barely moves on it.
+    """
+
     def evaluate(self, *, x: np.ndarray) -> np.ndarray:
         return (
             1.8
             - 0.55 * np.exp(-(((x - 1.2) / 0.35) ** 2))
             - 1.5 * np.exp(-(((x - 3.6) / 0.7) ** 2))
-            + 0.015 * x
+            + self.plateau_slope * x
         )
 
     def derivative(self, *, x: float, step: float = 1e-6) -> float:
