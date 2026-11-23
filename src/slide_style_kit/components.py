@@ -169,8 +169,6 @@ class TakeAway(CompositeElement):
 class CodeBlock(CompositeElement):
     """
     Source code in a grey box, highlighted, keeping the indentation of its lines.
-
-    .. warning:: The code is set as markup, so it cannot contain a closing brace.
     """
 
     area: Rectangle
@@ -299,7 +297,8 @@ class CodeBlock(CompositeElement):
                 kept = piece.text[leading:]
                 leading = max(leading - len(piece.text), 0)
                 if kept:
-                    spans.append(f"{{{piece.style.value}:{kept}}}")
+                    escaped = kept.replace("}", "}}")
+                    spans.append(f"{{{piece.style.value}:{escaped}}}")
             paragraphs.append(
                 Paragraph(text="".join(spans), space_after=1, indent=indentation)
             )

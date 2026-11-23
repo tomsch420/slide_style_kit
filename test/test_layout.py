@@ -11,7 +11,7 @@ from slide_style_kit.components import CodeBlock, Matrix, TodoNote
 from slide_style_kit.elements import Box, Picture, Table
 from slide_style_kit.exceptions import UnsizedPicture
 from slide_style_kit.geometry import Length, Position, Rectangle
-from slide_style_kit.style import Color, Alignment, BulletLevel, Rotation
+from slide_style_kit.style import Alignment, BulletLevel, Color, Rotation, Typeface
 
 # %% geometry
 
@@ -175,3 +175,17 @@ def test_code_block_highlights_keywords_numbers_and_comments():
     assert (keyword.text, keyword.color) == ("import", Color.CODE_KEYWORD)
     assert (comment.color, comment.italic) == (Color.CODE_COMMENT, True)
     assert (number.text, number.color) == ("2.0", Color.CODE_NUMBER)
+
+
+def test_code_block_keeps_closing_braces_monospaced():
+    """
+    Braces of the code stay part of the code instead of ending its markup spans.
+    """
+    code = CodeBlock(
+        area=Rectangle(left=0, top=0, width=5, height=2),
+        source_code='x = {"a": 1}\n',
+    )
+    (line,) = code.code_paragraphs()
+    runs = line.markup.runs()
+    assert "".join(run.text for run in runs) == 'x = {"a": 1}'
+    assert all(run.typeface == Typeface.MONOSPACE for run in runs)

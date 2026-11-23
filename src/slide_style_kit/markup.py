@@ -2,7 +2,7 @@
 The inline markup of slide text.
 
 A span ``{x:text}`` styles *text* by the letter ``x`` (see :class:`MarkupStyle`); spans
-do not nest, and the styled text cannot contain a closing brace.
+do not nest, and ``}}`` inside a span stands for one closing brace of its text.
 """
 
 from __future__ import annotations
@@ -185,9 +185,10 @@ class Markup:
     @classproperty
     def span_pattern(cls) -> re.Pattern[str]:
         """
-        The pattern of one span: its style letter and its text.
+        The pattern of one span: its style letter and its text, with closing braces
+        doubled.
         """
-        return re.compile(rf"\{{([{''.join(MarkupStyle)}]):(.*?)\}}")
+        return re.compile(rf"\{{([{''.join(MarkupStyle)}]):((?:\}}\}}|[^}}])*)\}}")
 
     def runs(self) -> list[TextRun]:
         """
@@ -200,7 +201,7 @@ class Markup:
             if span.start() > position:
                 plain_text = self.text[position : span.start()]
                 runs.append(replace(surrounding_style, text=plain_text))
-            styled = replace(surrounding_style, text=span.group(2))
+            styled = replace(surrounding_style, text=span.group(2).replace("}}", "}"))
             runs.append(MarkupStyle(span.group(1)).apply(run=styled))
             position = span.end()
         if position < len(self.text):

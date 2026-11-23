@@ -58,3 +58,14 @@ def test_unknown_style_letters_stay_literal_text():
     """
     markup = Markup(text="{q:not a span}")
     assert markup.runs() == [TextRun(text="{q:not a span}", color=Color.BLACK)]
+
+
+def test_doubled_closing_brace_is_a_literal_brace_inside_a_span():
+    """
+    Inside a span, ``}}`` stands for one closing brace and does not end the span.
+    """
+    markup = Markup(text="{m:x}}}!")
+    assert markup.runs() == [
+        TextRun(text="x}", color=Color.BLACK, typeface=Typeface.MONOSPACE),
+        TextRun(text="!", color=Color.BLACK),
+    ]
