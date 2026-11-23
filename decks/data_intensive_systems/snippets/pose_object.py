@@ -1,0 +1,6 @@
+pose = Pose(
+    time=1.5,
+    frame="map",
+    position=Position(x=0.7, y=0.45, z=0.8),
+    orientation=Quaternion(x=0, y=0, z=0, w=1),
+)

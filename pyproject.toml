@@ -40,8 +40,9 @@ include = ["slide_style_kit*"]
 slide_style_kit = ["assets/*"]
 
 [tool.krrood.check]
-# The bundled example and the slide snippets are shown verbatim on slides.
-exclude = ['^src/slide_style_kit/assets/', '^decks/[^/]+/snippets/']
+# The bundled example and the slide snippets are shown verbatim on slides; ORMatic
+# generates the pose interface.
+exclude = ['^src/slide_style_kit/assets/', '^decks/[^/]+/snippets/', '^decks/[^/]+/orm/pose_interface\.py$']
 
 [tool.pytest.ini_options]
 testpaths = ["test"]

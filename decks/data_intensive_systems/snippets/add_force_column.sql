@@ -1,0 +1,1 @@
+ALTER TABLE pose ADD COLUMN force REAL;

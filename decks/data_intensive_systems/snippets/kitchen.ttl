@@ -1,0 +1,10 @@
+@prefix : <http://example.org/kitchen#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+:DrinkingContainer rdfs:subClassOf :Container .
+:Bowl rdfs:subClassOf :Container .
+:Cup rdfs:subClassOf :DrinkingContainer .
+
+:cup_3 a :Cup ; :locatedOn :table .
+:bowl_2 a :Bowl ; :locatedOn :table .
+:plate_1 a :Plate ; :locatedOn :table .

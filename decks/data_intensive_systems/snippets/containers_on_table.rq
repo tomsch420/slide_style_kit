@@ -1,0 +1,7 @@
+PREFIX : <http://example.org/kitchen#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+SELECT ?object WHERE {
+  ?object :locatedOn :table ;
+          a/rdfs:subClassOf* :Container .
+}

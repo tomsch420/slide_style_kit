@@ -14,3 +14,5 @@ decks/*/*.pptx
 decks/*/*.pdf
 # rendered animations; run render_animations.py to regenerate
 decks/*/animations/
+# rendered charts; run the deck module to regenerate
+decks/*/charts/
