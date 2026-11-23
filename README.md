@@ -8,9 +8,24 @@ following the krrood conventions (see `AGENTS.md`).
 
 ```bash
 python -m venv .venv && . .venv/bin/activate
-pip install -e ".[dev]"
+pip install -e ".[dev,decks]"
 pre-commit install
 ```
+
+The `decks` extra brings what the decks under `decks/` compute with (numpy, scipy,
+matplotlib, rdflib). The decks use krrood from the main branch of
+[cram2](https://github.com/cram2/cognitive_robot_abstract_machine), newer than its
+release on PyPI. Install it editable from a checkout, the krrood distributions
+together with the packages they need at the same version:
+
+```bash
+git clone https://github.com/cram2/cognitive_robot_abstract_machine.git
+cd cognitive_robot_abstract_machine
+pip install $(printf -- '-e %s ' krrood/krrood-*/) -e krrood \
+    -e random_events -e probabilistic_model -e domain_models/krrood_compute_resources
+```
+
+To update krrood, pull that checkout and run the same `pip install` again.
 
 Fonts for the PDF: Liberation Sans/Mono and DejaVu Sans
 (`apt install fonts-liberation fonts-dejavu-core`). For other locations, set

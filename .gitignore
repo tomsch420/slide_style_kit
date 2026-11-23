@@ -9,6 +9,8 @@ example.pdf
 
 # third-party crops of the original deck, no longer used
 decks/*/figures/
+# except the figures the Data-Intensive Systems deck still shows
+!decks/data_intensive_systems/figures/
 # built decks; run the deck module to regenerate
 decks/*/*.pptx
 decks/*/*.pdf
