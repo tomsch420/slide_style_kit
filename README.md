@@ -90,6 +90,6 @@ Inside any string (not nestable):
 
 ```bash
 pytest
-krrood check --all-lines $(find src test -name '*.py' -not -path '*/assets/*')
+krrood check --all-lines $(git ls-files '*.py')
 krrood agents-md   # regenerate AGENTS.md after a krrood update
 ```

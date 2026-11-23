@@ -20,10 +20,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# krrood already installs krrood-development-tools, which brings pytest.
 dev = [
-    "krrood[development-tools]",
     "pre-commit",
-    "pytest>=7.0.0",
 ]
 
 [project.scripts]
@@ -39,6 +38,10 @@ include = ["slide_style_kit*"]
 
 [tool.setuptools.package-data]
 slide_style_kit = ["assets/*"]
+
+[tool.krrood.check]
+# The bundled example and the slide snippets are shown verbatim on slides.
+exclude = ['^src/slide_style_kit/assets/', '^decks/[^/]+/snippets/']
 
 [tool.pytest.ini_options]
 testpaths = ["test"]

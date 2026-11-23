@@ -18,7 +18,7 @@ from pptx.oxml.ns import qn
 from pptx.util import Emu, Inches, Pt
 from typing_extensions import TYPE_CHECKING
 
-from krrood.ormatic.utils import classproperty
+from krrood.patterns.classproperty import classproperty
 
 from slide_style_kit.renderer import Renderer
 from slide_style_kit.style import Alignment, Color, Typeface, VerticalAnchor

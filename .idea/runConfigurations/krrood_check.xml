@@ -1,6 +1,6 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="krrood check" type="ShConfigurationType">
-    <option name="SCRIPT_TEXT" value=".venv/bin/krrood check --all-lines $(find src test -name &apos;*.py&apos; -not -path &apos;*/assets/*&apos;)" />
+    <option name="SCRIPT_TEXT" value=".venv/bin/krrood check --all-lines $(git ls-files &apos;*.py&apos;)" />
     <option name="INDEPENDENT_SCRIPT_PATH" value="true" />
     <option name="SCRIPT_PATH" value="" />
     <option name="SCRIPT_OPTIONS" value="" />

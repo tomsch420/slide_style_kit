@@ -20,7 +20,7 @@ from reportlab.platypus import Paragraph as ReportLabParagraph
 from svglib.svglib import svg2rlg
 from typing_extensions import TYPE_CHECKING
 
-from krrood.ormatic.utils import classproperty
+from krrood.patterns.classproperty import classproperty
 
 from slide_style_kit.elements import TextFrame
 from slide_style_kit.fonts import FontFiles, FontVariant

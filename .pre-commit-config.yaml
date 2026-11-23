@@ -2,10 +2,9 @@
 # environment installs (`pip install -e ".[dev]"`); see krrood/doc/development_tools.md.
 repos:
   - repo: https://github.com/cram2/cognitive_robot_abstract_machine
-    rev: main
+    rev: 683690c433a21cb49a966ffa5fc618a8fca9da50
     hooks:
       - id: krrood-format
         exclude: ^src/slide_style_kit/assets/
       - id: krrood-check
-        exclude: ^src/slide_style_kit/assets/
       - id: krrood-agents-md

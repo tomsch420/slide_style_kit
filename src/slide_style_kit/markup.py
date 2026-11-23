@@ -11,7 +11,7 @@ import re
 from dataclasses import dataclass, replace
 from enum import StrEnum
 
-from krrood.ormatic.utils import classproperty
+from krrood.patterns.classproperty import classproperty
 
 from slide_style_kit.style import Color, Typeface
 

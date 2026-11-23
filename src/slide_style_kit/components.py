@@ -9,7 +9,7 @@ import math
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from krrood.ormatic.utils import classproperty
+from krrood.patterns.classproperty import classproperty
 from pygments.lexers import get_lexer_by_name, get_lexer_for_filename
 from pygments.token import Comment, Keyword, Name, Number, Operator, String, _TokenType
 
@@ -118,6 +118,23 @@ class Caption(Label):
 
 
 # %% text blocks
+
+
+@dataclass(frozen=True, kw_only=True)
+class HighlightedPiece:
+    """
+    A stretch of one line of code that is highlighted in one style.
+    """
+
+    style: MarkupStyle
+    """
+    The markup style the stretch is shown in.
+    """
+
+    text: str
+    """
+    The characters of the stretch, without a line break.
+    """
 
 
 @dataclass(kw_only=True)
@@ -231,22 +248,26 @@ class CodeBlock(CompositeElement):
             return MarkupStyle.CODE_NAME
         return MarkupStyle.MONOSPACE
 
-    def highlighted_lines(self) -> list[list[tuple[MarkupStyle, str]]]:
+    def highlighted_lines(self) -> list[list[HighlightedPiece]]:
         """
-        :return: Every line of the code as its highlighted pieces, in order.
+        :return: Every line of the code as its highlighted pieces, in order; adjacent
+            pieces of one line never share a style.
         """
         lexer = get_lexer_by_name(self.language)
-        lines: list[list[tuple[MarkupStyle, str]]] = [[]]
-        for token_type, text in lexer.get_tokens(self.source_code.strip("\n")):
+        lines: list[list[HighlightedPiece]] = [[]]
+        for token_type, token_text in lexer.get_tokens(self.source_code.strip("\n")):
             style = self.token_style(token_type=token_type)
-            for index, piece in enumerate(text.split("\n")):
+            for index, text in enumerate(token_text.split("\n")):
                 if index > 0:
                     lines.append([])
-                if not piece:
+                if not text:
                     continue
-                if lines[-1] and lines[-1][-1][0] == style:
-                    piece = lines[-1].pop()[1] + piece
-                lines[-1].append((style, piece))
+                preceding = (
+                    lines[-1].pop().text
+                    if lines[-1] and lines[-1][-1].style == style
+                    else ""
+                )
+                lines[-1].append(HighlightedPiece(style=style, text=preceding + text))
         if not lines[-1]:
             lines.pop()
         return lines
@@ -261,7 +282,7 @@ class CodeBlock(CompositeElement):
         )
         paragraphs = []
         for pieces in self.highlighted_lines():
-            line = "".join(piece for _, piece in pieces)
+            line = "".join(piece.text for piece in pieces)
             body = line.lstrip(" ")
             if not body:
                 paragraphs[-1] = replace(
@@ -274,11 +295,11 @@ class CodeBlock(CompositeElement):
             )
             leading = len(line) - len(body)
             spans = []
-            for style, piece in pieces:
-                kept = piece[leading:]
-                leading = max(leading - len(piece), 0)
+            for piece in pieces:
+                kept = piece.text[leading:]
+                leading = max(leading - len(piece.text), 0)
                 if kept:
-                    spans.append(f"{{{style.value}:{kept}}}")
+                    spans.append(f"{{{piece.style.value}:{kept}}}")
             paragraphs.append(
                 Paragraph(text="".join(spans), space_after=1, indent=indentation)
             )

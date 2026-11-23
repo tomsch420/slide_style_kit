@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 
-from krrood.ormatic.utils import classproperty
+from krrood.patterns.classproperty import classproperty
 
 from slide_style_kit.assets import Asset
 from slide_style_kit.exceptions import FormulaTypesettingFailure, MissingLatexTool
